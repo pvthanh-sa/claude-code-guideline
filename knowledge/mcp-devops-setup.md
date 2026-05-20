@@ -292,7 +292,6 @@ All follow the standard pattern:
 | --------- | ---------------------------- | ------------------------------- | ---------------------------------------------------------------- |
 | SNS / SQS | `awslabs.amazon-sns-sqs-mcp-server` | Event-driven messaging & queues | [Docs](https://awslabs.github.io/mcp/servers/amazon-sns-sqs-mcp-server) |
 | MQ        | `awslabs.amazon-mq-mcp-server`      | RabbitMQ / ActiveMQ broker      | [Docs](https://awslabs.github.io/mcp/servers/amazon-mq-mcp-server)      |
-| MSK       | `awslabs.aws-msk-mcp-server`        | Amazon Managed Kafka            | [Docs](https://awslabs.github.io/mcp/servers/aws-msk-mcp-server)        |
 | AppSync   | `awslabs.aws-appsync-mcp-server`    | GraphQL API backend             | [Docs](https://awslabs.github.io/mcp/servers/aws-appsync-mcp-server)    |
 
 All follow the standard pattern:

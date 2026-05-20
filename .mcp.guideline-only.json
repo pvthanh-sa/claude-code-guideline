@@ -278,14 +278,6 @@
         "AWS_REGION": "<your-aws-region>"
       }
     },
-    "msk": {
-      "command": "uvx",
-      "args": ["awslabs.aws-msk-mcp-server@latest"],
-      "env": {
-        "AWS_PROFILE": "<your-aws-profile>",
-        "AWS_REGION": "<your-aws-region>"
-      }
-    },
     "appsync": {
       "command": "uvx",
       "args": ["awslabs.aws-appsync-mcp-server@latest"],
