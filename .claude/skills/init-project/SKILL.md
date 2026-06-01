@@ -1,9 +1,9 @@
 ---
 name: init-project
-description: 'Initialize Claude Code Core for the current project. Analyzes project structure and README (for CI/CD tech), generates CLAUDE.md, selectively copies relevant skills/agents/rules, and creates a project-specific .mcp.json.'
+description: 'Initialize or refresh Claude Code Core for the current project. Init mode analyzes project structure and README (for CI/CD tech), generates CLAUDE.md, selectively copies relevant skills/agents/rules, and creates a project-specific .mcp.json. Sync mode (--sync) refreshes already-installed skills/agents/rules from the guideline repo in place.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Write
-argument-hint: '[output-path]'
+argument-hint: '[output-path] | --sync'
 ---
 
 # Init Project — Full Claude Code Core Setup
@@ -15,7 +15,21 @@ Initialize Claude Code Core for the current project in 4 phases:
 3. Copy **only the relevant** skills, agents, rules, and settings based on what was detected
 4. Generate `.mcp.json` with **only the relevant** MCP servers
 
-**Output path for CLAUDE.md:** `$ARGUMENTS` if provided, otherwise auto-detect:
+---
+
+## Mode Selection
+
+Inspect `$ARGUMENTS` first and pick exactly one mode:
+
+- **Sync mode** — if `$ARGUMENTS` contains the token `--sync`: jump straight to the
+  [Sync Mode](#sync-mode--refresh-installed-core-files-in-place) section at the bottom and
+  ignore Phases 1–6. Sync **refreshes in place** the skills/agents/rules that are already
+  installed under `.claude/`, pulling the latest copy from the guideline repo. It never
+  touches `CLAUDE.md`, `.mcp.json`, or `settings.json`, and never adds new files.
+- **Init mode** (default — anything that is not `--sync`) — run the full 6-phase bootstrap below.
+
+**Output path for CLAUDE.md (init mode only):** the first non-flag token in `$ARGUMENTS` if
+provided (e.g. `docs/CLAUDE.md`), otherwise auto-detect:
 
 - Use `.claude/CLAUDE.md` if `.claude/` directory exists
 - Use `CLAUDE.md` at project root otherwise
@@ -154,7 +168,10 @@ mkdir -p .claude/skills .claude/agents .claude/rules
 
 ```bash
 # Always copy (foundation)
-cp -r "$GUIDELINE_CLAUDE/skills/init-project"   ".claude/skills/"
+# NOTE: do NOT copy `init-project` itself — it is installed once per machine as a
+# user-level symlink (~/.claude/skills/init-project) and is available to every project.
+# Copying it here would be redundant AND would break `--sync`, because a project-local
+# copy makes $CLAUDE_SKILL_DIR resolve into the project instead of the guideline repo.
 cp -r "$GUIDELINE_CLAUDE/skills/devops-engineer" ".claude/skills/"
 cp -r "$GUIDELINE_CLAUDE/skills/secure-code-guardian" ".claude/skills/"
 
@@ -456,4 +473,101 @@ After completing all phases, print a summary:
    git add CLAUDE.md .claude/
    git commit -m "chore: add Claude Code guidelines"
    # .mcp.json is gitignored — do not commit
+```
+
+---
+
+## Sync Mode — Refresh Installed Core Files In Place
+
+Triggered by `/init-project --sync`. Use this to pull the **latest** version of the
+skills/agents/rules already installed in this project, after the guideline repo has been
+updated (`git pull` in `claude-code-guideline`). This is the safe, reviewable alternative to
+symlinking project `.claude/` content — the project keeps committable, portable file copies,
+but you can refresh them on demand.
+
+**Scope — what sync does and does NOT touch:**
+
+- ✅ Refreshes only files that **already exist** under `.claude/skills/`, `.claude/agents/`,
+  `.claude/rules/` — overwriting them with the guideline version.
+- ❌ Never adds a skill/agent/rule that isn't already installed (to add new ones, re-run init
+  mode so the tech stack is re-detected).
+- ❌ Never touches `CLAUDE.md` (you may have customized it).
+- ❌ Never touches `.mcp.json` (gitignored, holds local secrets/placeholders).
+- ❌ Never touches `.claude/settings.json` (may hold project-local settings).
+
+### Step 1: Resolve the guideline source
+
+```bash
+GUIDELINE_CLAUDE="$(dirname "$(dirname "$CLAUDE_SKILL_DIR")")"
+echo "Source: $GUIDELINE_CLAUDE"
+test -d "$GUIDELINE_CLAUDE/skills" || { echo "ERROR: guideline source not found — is the skill symlinked?"; exit 1; }
+```
+
+### Step 2: Refresh in place (existing files only)
+
+```bash
+# Skills — refresh each skill dir that already exists in the project
+for d in .claude/skills/*/; do
+  [ -d "$d" ] || continue
+  name="$(basename "$d")"
+  if [ -d "$GUIDELINE_CLAUDE/skills/$name" ]; then
+    cp -r "$GUIDELINE_CLAUDE/skills/$name/." "$d"
+    echo "refreshed skill: $name"
+  else
+    echo "skipped (not in guideline): skills/$name"
+  fi
+done
+
+# Agents — refresh each .md that already exists
+for f in .claude/agents/*.md; do
+  [ -e "$f" ] || continue
+  name="$(basename "$f")"
+  if [ -f "$GUIDELINE_CLAUDE/agents/$name" ]; then
+    cp "$GUIDELINE_CLAUDE/agents/$name" "$f"
+    echo "refreshed agent: $name"
+  else
+    echo "skipped (not in guideline): agents/$name"
+  fi
+done
+
+# Rules — refresh each .md that already exists
+for f in .claude/rules/*.md; do
+  [ -e "$f" ] || continue
+  name="$(basename "$f")"
+  if [ -f "$GUIDELINE_CLAUDE/rules/$name" ]; then
+    cp "$GUIDELINE_CLAUDE/rules/$name" "$f"
+    echo "refreshed rule: $name"
+  else
+    echo "skipped (not in guideline): rules/$name"
+  fi
+done
+```
+
+### Step 3: Show the diff for review
+
+```bash
+git diff --stat -- .claude/ 2>/dev/null || echo "(not a git repo — review changes manually)"
+```
+
+### Step 4: Summary
+
+Print a recap and the review/commit hint — **do not commit automatically**:
+
+```
+## Sync Complete
+
+### Refreshed:
+- skills/  [list refreshed]
+- agents/  [list refreshed]
+- rules/   [list refreshed]
+
+### Skipped (installed here but absent from guideline — possibly renamed/removed upstream):
+[list, or "none"]
+
+### Review before committing:
+   git diff -- .claude/
+   git add .claude/
+   git commit -m "chore: sync Claude Code Core from guideline"
+
+CLAUDE.md, .mcp.json, and settings.json were intentionally left untouched.
 ```
