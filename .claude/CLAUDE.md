@@ -49,9 +49,27 @@ Communicate in Vietnamese when user speaks Vietnamese.
 - Never use `latest` tag in production
 - RBAC with least privilege
 
+## DevOps Workflow (Pipeline)
+
+End-to-end, **human-in-the-loop** flow (full runbook: `knowledge/devops-workflow.md`).
+Each stage is a discrete skill that **STOPS at an approval gate** — never auto-advance:
+
+```
+/spec-architect  ──G1──►  /init-project  ──G2──►  /iac-implement  ──G3──►  /infra-review  ──G4──►
+   (build spec)            (bootstrap)             (Terraform/plan)         (parallel review)
+```
+
+- **G1** — approve `docs/specs/<name>.spec.md` before init
+- **G2** — approve `CLAUDE.md` + fill `.mcp.json` before writing IaC
+- **G3** — approve `terraform plan` BEFORE `apply` (never auto-apply)
+- **G4** — approve the review report (security + infra + cost) → go / fix / no-go
+
+The human is the driver; Claude is the co-pilot. No stage runs `terraform apply` or commits.
+
 ## Skills Available
 
 Type `/` to see all available skills:
+- **Pipeline:** spec-architect, init-project, iac-implement, infra-review
 - **Infrastructure:** terraform-engineer, kubernetes-specialist, postgres-pro, cloud-architect, database-optimizer
 - **DevOps:** devops-engineer, monitoring-expert, sre-engineer, chaos-engineer, cli-developer
 - **Security:** secure-code-guardian, security-reviewer

@@ -43,6 +43,30 @@ Enforced coding standards across different file types:
 
 ---
 
+## 🔁 DevOps Pipeline (human-in-the-loop)
+
+Beyond individual skills, four of them chain into an end-to-end flow with a **human approval
+gate at every step** — Claude never auto-advances and never runs `terraform apply` or commits:
+
+```
+/spec-architect ──G1──► /init-project ──G2──► /iac-implement ──G3──► /infra-review ──G4──►
+   build spec            bootstrap            Terraform / plan       parallel review
+```
+
+- **Stage 1 — `/spec-architect`**: co-design `docs/specs/<name>.spec.md` (Well-Architected + pricing).
+- **Stage 2 — `/init-project`**: detect stack (reads the spec), generate `CLAUDE.md` + `.mcp.json`.
+- **Stage 3 — `/iac-implement`**: reuse the custom module library (`MODULES.md`) → scaffold an
+  environment → `fmt/validate/tflint/checkov/plan`.
+- **Stage 4 — `/infra-review`**: a parallel **Workflow** runs `security-auditor` + `infra-reviewer`
+  + `cost-optimizer`, synthesized into one severity-ranked go/no-go report.
+
+**Detailed step-by-step guide (worked example, checklists, troubleshooting):**
+**[`knowledge/pipeline-usage-guide.md`](knowledge/pipeline-usage-guide.md)**.
+Quick reference map: [`knowledge/devops-workflow.md`](knowledge/devops-workflow.md).
+Install the pipeline skills once per machine: see [`knowledge/setup-new-project.md`](knowledge/setup-new-project.md) §1.
+
+---
+
 ## 🚀 How to Use
 
 ### Integrating into your project

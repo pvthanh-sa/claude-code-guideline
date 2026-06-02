@@ -2,6 +2,8 @@
 
 Distilled from the official Claude Code documentation (memory, permission-modes, common-workflows, best-practices, skills).
 
+> Model references updated 2026-06 — Claude 4.x family: **Opus 4.8 / 4.7**, **Sonnet 4.6**, **Haiku 4.5**. Conceptual sections (memory, skills, hooks, MCP, permissions, worktrees) are version-independent; the official docs remain the source of truth for fast-moving details.
+
 **Core Structure:**
 
 - **Part I: Fundamentals** - Context window, memory systems, workflows
@@ -330,7 +332,7 @@ Auto mode eliminates permission prompts by using a background classifier to eval
 **Requirements:**
 
 - Plan: Team, Enterprise, or API (not Pro/Max)
-- Model: Claude Sonnet 4.6 or Opus 4.6 (not Haiku)
+- Model: Claude Sonnet 4.6 or Opus 4.7/4.8 (not Haiku)
 - Provider: Anthropic API only
 - Admin: Enabled via admin settings on Team/Enterprise
 
@@ -422,13 +424,15 @@ Claude uses adaptive reasoning and extended thinking to work through complex pro
 
 | Control                                   | How to use   | Purpose                                                                |
 | ----------------------------------------- | ------------ | ---------------------------------------------------------------------- |
-| `/effort`                                 | In session   | Adjust effort level: `low`, `medium`, `high`, `max` (Opus 4.6 only)    |
+| `/effort`                                 | In session   | Adjust effort level: `low`, `medium`, `high`, `xhigh`, `max` (`xhigh` Opus 4.8/4.7 only)    |
 | `Option+T` / `Alt+T`                      | Toggle       | Enable/disable thinking mode (all models)                              |
 | `Ctrl+O`                                  | Verbose mode | Show Claude's internal reasoning as gray italic text                   |
 | `ultrathink`                              | In prompt    | Include anywhere in prompt to set effort=high for that turn            |
-| `MAX_THINKING_TOKENS`                     | Env var      | Limit thinking budget (Opus 4.6 & Sonnet 4.6 only; 0=disabled)         |
-| `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` | Env var      | Disable adaptive thinking on Opus/Sonnet 4.6 (reverts to fixed budget) |
+| `MAX_THINKING_TOKENS`                     | Env var      | Limit thinking budget (Opus 4.7/4.8 & Sonnet 4.6 only; 0=disabled)         |
+| `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` | Env var      | Disable adaptive thinking on Opus 4.7/4.8 & Sonnet 4.6 (reverts to fixed budget) |
 | `/config`                                 | In session   | Toggle thinking globally (saved to ~/.claude/settings.json)            |
+
+> **Fast mode (`/fast`):** uses Claude Opus with **faster output** (it does NOT downgrade to a smaller model). Toggle with `/fast`; available on Opus 4.8/4.7/4.6.
 
 ### Use Cases
 
@@ -848,7 +852,8 @@ When starting on a new project with Claude Code:
 | **Work on multiple tasks**         | Git Worktrees    | `claude --worktree feature-name`               |
 | **Switch permissions mid-session** | Permission cycle | `Shift+Tab`                                    |
 | **See Claude's reasoning**         | Thinking mode    | `Ctrl+O` (verbose) or `Option+T` (toggle)      |
-| **Control thinking depth**         | Effort level     | `/effort high`                                 |
+| **Control thinking depth**         | Effort level     | `/effort high` (or `xhigh` on Opus 4.8/4.7)    |
+| **Faster Opus output**             | Fast mode        | `/fast`                                        |
 | **Quick question without context** | Side question    | `/btw your question`                           |
 | **Recover from mistakes**          | Rewind           | `Esc+Esc` or `/rewind`                         |
 | **Clean up context**               | Clear context    | `/clear` or `/compact [focus]`                 |
@@ -896,13 +901,16 @@ When starting on a new project with Claude Code:
 
 ## 25. Model-Specific Capabilities
 
-| Capability            | Opus 4.6      | Sonnet 4.6               | Haiku 4.0    | claude-3       |
+| Capability            | Opus 4.8/4.7  | Sonnet 4.6               | Haiku 4.5    | claude-3       |
 | --------------------- | ------------- | ------------------------ | ------------ | -------------- |
 | **Adaptive thinking** | ✅ Full       | ✅ Full                  | ❌           | ❌             |
 | **Auto mode**         | ✅            | ✅                       | ❌           | ❌             |
 | **Extended thinking** | ✅            | ✅                       | Fixed budget | Fixed budget   |
-| **Max effort level**  | `max`         | `high`                   | `high`       | `high`         |
+| **Max effort level**  | `max` (+ `xhigh`) | `high`               | `high`       | `high`         |
+| **Fast mode (`/fast`)** | ✅          | ❌                       | ❌           | ❌             |
 | **Recommended for**   | Complex tasks | Balanced (speed+quality) | Quick tasks  | Legacy support |
+
+> Opus 4.8 is available with a **1M-token context window** (vs the standard 200K).
 
 ---
 

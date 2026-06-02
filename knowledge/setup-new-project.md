@@ -2,23 +2,34 @@
 
 This skill **bootstraps Claude Code Core for a new project** — auto-detects the tech stack, generates a tailored `CLAUDE.md`, selectively copies the relevant skills/agents/rules, and produces a `.mcp.json`.
 
+> **Scope of this document:** this is the **deep reference for `/init-project`** (Stage 2 of the
+> pipeline) — the detection table, `--sync` mode, and the copy-vs-symlink rationale. Want the
+> **full-pipeline tutorial** (spec → init → IaC → review, with a worked example)? See
+> [`pipeline-usage-guide.md`](pipeline-usage-guide.md).
+
 ---
 
 ## 1. Install (once per machine)
 
-The skill lives in the `claude-code-guideline` repo. To make it available from any project on your machine, symlink it into your user-level skills directory:
+The skill lives in the `claude-code-guideline` repo. To make it available from any project on your machine, symlink it into your user-level skills directory. The same applies to the other **pipeline skills** (`spec-architect`, `iac-implement`, `infra-review`) — they are cross-project personal tools, so symlink them too (especially `spec-architect`, which runs **before** a project's `.claude/` even exists):
 
 ```bash
 mkdir -p ~/.claude/skills
-ln -sfn ~/Documents/Devops/claude-code-guideline/.claude/skills/init-project \
-        ~/.claude/skills/init-project
+for s in init-project spec-architect iac-implement infra-review; do
+  ln -sfn ~/Documents/Devops/claude-code-guideline/.claude/skills/$s \
+          ~/.claude/skills/$s
+done
 ```
 
 Verify:
 
 ```bash
-ls -la ~/.claude/skills/init-project/SKILL.md
+ls -la ~/.claude/skills/{init-project,spec-architect,iac-implement,infra-review}/SKILL.md
 ```
+
+> These four form the DevOps pipeline `/spec-architect → /init-project → /iac-implement →
+> /infra-review`. See [`devops-workflow.md`](devops-workflow.md) for the full flow and the
+> human approval gates (G1–G4).
 
 > **Why a symlink instead of a copy?**
 > When you `git pull` the guideline repo to update the skill, every project picks up the new version automatically.

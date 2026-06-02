@@ -48,6 +48,9 @@ find . -maxdepth 3 -type f \
 
 Read the following files to build a complete picture of the project:
 
+- `docs/specs/*.spec.md` — **if present**, an approved spec from `/spec-architect` (Stage 1). This
+  is the strongest signal: read it first to drive stack detection, CLAUDE.md, and `.mcp.json`,
+  even when the project is otherwise empty (greenfield-from-spec).
 - `README.md` — project overview, CI/CD platform, deployment description
 - `package.json` / `Pipfile` / `go.mod` / `Cargo.toml` — language/framework/dependencies
 - `.env.example` — required environment variables
@@ -253,7 +256,7 @@ Use the same detection matrix — no server is added by default. Every server re
 | Condition                                          | Add MCP servers                                 |
 | -------------------------------------------------- | ----------------------------------------------- |
 | Any AWS service detected (ECS/EKS/RDS/Lambda/etc.) | `aws-api`, `aws-knowledge`, `cloudwatch`, `iam` |
-| New project / architecture design phase            | `well-architected`                              |
+| New project / architecture design phase            | `well-architected`, `aws-pricing`               |
 | Terraform detected                                 | `terraform`, `iac`                              |
 | ECS detected                                       | `ecs`                                           |
 | EKS / Kubernetes detected                          | `eks`                                           |
@@ -311,6 +314,14 @@ Build `.mcp.json` using only the selected entries. Reference templates:
       "env": {
         "AWS_PROFILE": "<your-aws-profile>",
         "AWS_REGION": "<your-aws-region>"
+      }
+    },
+    "aws-pricing": {
+      "command": "uvx",
+      "args": ["awslabs.aws-pricing-mcp-server@latest"],
+      "env": {
+        "AWS_PROFILE": "<your-aws-profile>",
+        "AWS_REGION": "us-east-1"
       }
     },
     "terraform": {
@@ -473,7 +484,15 @@ After completing all phases, print a summary:
    git add CLAUDE.md .claude/
    git commit -m "chore: add Claude Code guidelines"
    # .mcp.json is gitignored — do not commit
+
+4. Next in the DevOps pipeline (Stage 3 — IaC): load the module library and implement:
+   /add-dir /home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure
+   /iac-implement docs/specs/<name>.spec.md <env-dir>
+   (see knowledge/devops-workflow.md for the full Spec → Init → IaC → Review flow)
 ```
+
+> This is **Gate G2** of the pipeline — stop here for the human to fill `.mcp.json` placeholders
+> and review `CLAUDE.md` before moving to Stage 3. Do not auto-run `/iac-implement`.
 
 ---
 

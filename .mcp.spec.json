@@ -1,0 +1,25 @@
+{
+  "_comment": "Ephemeral MCP config for Stage 1 (/spec-architect). Load ONLY for the spec session with: claude --mcp-config ~/.claude/spec-mcp.json  — copy this file there once and fill the placeholders. It is NOT persisted to user/project config, so it costs zero tokens in other sessions. Lean, read-only advisory servers only.",
+  "mcpServers": {
+    "aws-knowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    },
+    "well-architected": {
+      "command": "uvx",
+      "args": ["awslabs.well-architected-security-mcp-server"],
+      "env": {
+        "AWS_PROFILE": "phamvanthanh-claude-mcp-pham-thanh",
+        "AWS_REGION": "ap-northeast-1"
+      }
+    },
+    "aws-pricing": {
+      "command": "uvx",
+      "args": ["awslabs.aws-pricing-mcp-server@latest"],
+      "env": {
+        "AWS_PROFILE": "phamvanthanh-claude-mcp-pham-thanh",
+        "AWS_REGION": "ap-northeast-1"
+      }
+    }
+  }
+}
