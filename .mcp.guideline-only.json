@@ -47,7 +47,7 @@
     },
     "well-architected": {
       "command": "uvx",
-      "args": ["awslabs.well-architected-security-mcp-server"],
+      "args": ["awslabs.well-architected-security-mcp-server@latest"],
       "env": {
         "AWS_PROFILE": "<your-aws-profile>",
         "AWS_REGION": "<your-aws-region>"

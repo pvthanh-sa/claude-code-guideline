@@ -153,7 +153,7 @@ Always setup regardless of project. These cover monitoring, security, cost, and 
 },
 "well-architected": {
   "command": "uvx",
-  "args": ["awslabs.well-architected-security-mcp-server"],
+  "args": ["awslabs.well-architected-security-mcp-server@latest"],
   "env": { "AWS_PROFILE": "<your-profile>", "AWS_REGION": "ap-southeast-1" }
 },
 "billing": {
