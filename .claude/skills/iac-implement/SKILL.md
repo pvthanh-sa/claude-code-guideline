@@ -1,6 +1,6 @@
 ---
 name: iac-implement
-description: 'Stage 3 of the DevOps pipeline. Turn an approved spec into Terraform by REUSING the custom module library. Generates/reads a MODULES.md catalog, scaffolds an environment directory following the tokyo-dev convention, runs the validate chain, and STOPS at human gate G3 with `terraform plan` — never applies.'
+description: 'Stage 3 of the DevOps pipeline. Turn an approved spec into Terraform by REUSING the custom module library (custom-infrastructure = golden source; standalone projects vendor copies in, edit-upstream-then-recopy) and authoring new standalone/reusable modules when the library lacks one (kept project-local unless you promote them). Generates/reads a MODULES.md catalog, scaffolds an environment directory following the tokyo-dev convention, runs the validate chain, and STOPS at human gate G3 with `terraform plan` — never applies.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Write
 argument-hint: '[spec-path] [target-env-dir]'
@@ -23,6 +23,22 @@ from scratch. (This workflow targets Terraform; the steps below are Terraform-sp
 > `terraform apply` (also blocked by `settings.json`) and never commits. Hand the plan back
 > for the human to review and apply.
 
+> **Module sourcing — `custom-infrastructure` is the golden source.** Two layouts exist; detect
+> which one the target dir implies (ask if unclear):
+> - **(A) Env inside the library** (target is `…/custom-infrastructure/environments/<env>`):
+>   source modules in place via relative path (`../../modules/<name>`). No copying.
+> - **(B) Standalone project repo** (target is its own repo, e.g. `voteapp_2025`,
+>   `extracting-namecard-infrastructure` — has its own `modules/`): **vendor (copy)** the chosen
+>   modules from the library into the project's local `modules/<name>` and source them locally
+>   (`../modules/<name>` or `../../modules/<name>`, matching the project's depth). This matches
+>   how the user's standalone repos actually work.
+>
+> **Golden-source rule (layout B):** if a vendored module needs changes, edit it **upstream first**
+> at `$LIB/modules/<name>`, re-validate there, *then* re-copy into the project. Do **not** edit the
+> project's copy in isolation — that silently forks it from the library and the fix never flows back.
+> The only exception is a deliberate project-specific divergence; mark it clearly (provenance note
+> below) and tell the user it is now a fork.
+
 **Arguments:** `$ARGUMENTS` → first token = spec path (e.g. `docs/specs/api.spec.md`),
 second token = target environment dir (e.g. `environments/tokyo-dev`). Ask if missing.
 
@@ -35,12 +51,20 @@ second token = target environment dir (e.g. `environments/tokyo-dev`). Ask if mi
 2. The custom module library must be readable. Check for it:
 
 ```bash
-LIB="/home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure"
-if [ -d "$LIB/modules" ]; then echo "library: $LIB"; else echo "NOT LOADED"; fi
+# Path comes from the TF_MODULE_LIB env var (no hardcoded default). Set it once per machine
+# (Guide §1.3). If unset, stop and ask the user to export it.
+LIB="$TF_MODULE_LIB"
+if [ -z "$LIB" ]; then
+  echo "ERROR: TF_MODULE_LIB is not set — export it first (Guide §1.3), e.g.:"
+  echo '  export TF_MODULE_LIB="$HOME/path/to/custom-infrastructure"'
+  exit 1
+fi
+if [ -d "$LIB/modules" ]; then echo "library: $LIB"; else echo "NOT LOADED ($LIB)"; fi
 ```
 
-   If `NOT LOADED`, stop and ask the user to run:
-   `/add-dir /home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure`
+   If `NOT LOADED`, stop and ask the user to `/add-dir` the library — the path echoed above as
+   `$LIB` (i.e. wherever `$TF_MODULE_LIB` points on this machine):
+   `/add-dir <the $LIB path>`
    (optionally also a reference env, e.g. `.../new-clinic-infrastructure/environments/tokyo-dev`).
 
 ## Phase 1: Module catalog — read or (re)generate `MODULES.md`
@@ -83,11 +107,71 @@ Cover **every** module dir (the library has ~36: `network`, `vpc-endpoints-netwo
 `cloudwatch_alarm_*`, `alert_email`, `chatbot_slack`, `ses`, `lightsail*`, …). Do not silently
 drop modules — list them all.
 
-## Phase 2: Map spec → modules
+## Phase 2: Map spec → modules + decide sourcing layout
 
-Build the implementation plan: for each component in the spec's §3/§8, pick the **existing**
-module. If a component has no matching module, **stop and ask the user** whether to (a) adjust
-the design to fit an existing module, or (b) author a new module — never silently write a new one.
+1. Build the implementation plan: for each component in the spec's §3/§8, prefer an **existing**
+   library module. The library does **not** cover everything, so authoring a new module is a
+   **normal, expected** outcome — not a failure. For each gap, briefly tell the user the plan
+   ("no library module for X → I'll author a new reusable module `x`") and proceed unless they'd
+   rather (a) adjust the design to fit an existing module. Don't silently reshape a component just
+   to avoid a new module. **New modules live in the project's local `modules/<name>` and are NOT
+   promoted back to `custom-infrastructure`** — that only happens later, on your explicit request
+   (then it follows the golden-source flow). Author them per Phase 2.6.
+2. Decide the **sourcing layout** (see the "Module sourcing" callout above): **(A)** env inside the
+   library, or **(B)** standalone project that vendors copies. Infer from the target path; confirm
+   with the user. This determines the `source =` paths and whether Phase 2.5 runs.
+
+## Phase 2.5: Vendor modules into the project (layout B only)
+
+Skip for layout A. For a standalone project, **copy** each chosen module from the library into the
+project, preserving the directory name, then stamp a provenance header so the copy is traceable
+back to the golden source:
+
+```bash
+SRC="$LIB/modules/<name>"
+DST="<project-root>/modules/<name>"
+mkdir -p "$DST" && cp -R "$SRC/." "$DST/"
+# provenance: which library version this copy came from
+REF="$(git -C "$LIB" rev-parse --short HEAD 2>/dev/null || echo 'unversioned')"
+printf '# vendored from custom-infrastructure/modules/%s @ %s on %s — edit UPSTREAM first, then re-copy\n' \
+  "<name>" "$REF" "$(date +%F)" >> "$DST/.provenance"
+```
+
+Record the same `module @ ref @ date` line per vendored module in the project's `MODULES.md`
+(create a short "Vendored modules" section) so a future session knows the source revision and the
+golden-source rule. Never modify a vendored module in place — edit `$LIB/modules/<name>` and re-copy.
+
+## Phase 2.6: Author a new module (when the library lacks one)
+
+Write it at `<project-root>/modules/<name>/` (project-local; not in `custom-infrastructure`). Design
+it as a **standalone, reusable** unit — assume it'll be reused in unrelated stacks later, so bake in
+no environment- or project-specific values. Model it on existing library modules for consistency and
+honor `.claude/rules/terraform.md`.
+
+**Module-design checklist:**
+- **Single responsibility** — one logical component (e.g. "an SQS queue + its DLQ + alarms"), not a
+  grab-bag. If it does two unrelated things, split it.
+- **Standard files**: `versions.tf` (only `terraform`/`required_providers` — **never** a `provider`
+  block; the caller configures providers), `variables.tf`, `main.tf`, `outputs.tf`, plus `data.tf` /
+  `locals.tf` if needed, and a short `README.md` (purpose + usage example + inputs/outputs).
+- **Fully parameterized** — no hardcoded names, regions, account IDs, CIDRs, ARNs, or env names.
+  Everything env-specific is an input. The caller passes identifiers in (e.g. `vpc_id`,
+  `subnet_ids`); avoid reaching out via `data` sources for things the caller should own.
+- **Variables**: every var has `description` + `type`; constrained vars get a `validation` block;
+  safe defaults where sensible; booleans prefixed `enable_` / `create_` to make resources optional
+  (`for_each`/`count` gated on them). Use `for_each` over `count` unless ordering matters.
+- **Outputs**: expose everything a caller might wire downstream, each with a `description`;
+  `sensitive = true` for secrets.
+- **Naming & tags**: derive names from an input prefix (`${var.app_name}-<resource-type>`); tag via
+  `merge(var.tags, { Name = "...", ManagedBy = "Terraform" })`. IAM via
+  `data.aws_iam_policy_document`, never inline JSON. `dynamic` blocks for optional nested config.
+- **Self-contained**: no backend/state config, no reference to a specific environment. It should
+  `terraform validate` in isolation.
+- Catalog it in the project's `MODULES.md` under a **"New modules (project-local)"** section so it's
+  discoverable, and note it's a candidate to promote upstream later if it proves broadly useful.
+
+If — and only if — the user asks to promote a new module into the shared library, copy it to
+`$LIB/modules/<name>`, re-validate there, and from then on treat the library as the golden source.
 
 ## Phase 3: Scaffold the environment directory
 
@@ -102,8 +186,11 @@ Create the target env dir following the **tokyo-dev convention** (`.claude/rules
 - `locals.tf` — centralized `tags` map (`merge` base), account id from `data.aws_caller_identity`
 - `data.tf` — `aws_caller_identity`, AZs, any lookups
 - `variables.tf` — every var has `description` + `type`; constrained vars get `validation`
-- `main.tf` — module blocks via **relative source** (`../../modules/<name>`), instance prefix
-  `${var.environment}-${var.app_name}`, `tags = local.tags`, wiring outputs between modules
+- `main.tf` — module blocks via **relative source** pointing at the layout chosen in Phase 2:
+  layout A → `../../modules/<name>` (library in place); layout B → the project's **vendored** copy
+  (`../modules/<name>` or `../../modules/<name>`, matching the repo's depth — never reach back into
+  `custom-infrastructure`). Instance prefix `${var.environment}-${var.app_name}`, `tags = local.tags`,
+  wiring outputs between modules
 - `terraform.tfvars` — concrete values from the spec (NO secrets — those go to Secrets Manager/SSM)
 - `outputs.tf` — key outputs
 
@@ -137,9 +224,10 @@ terraform plan -out=tfplan
 ```
 ## Terraform ready for review (G3)
 
+### Sourcing layout: A (in-library) | B (standalone, vendored copies)
 ### Reused modules:
-- network, alb, ecs, rds, ... (from custom-infrastructure)
-### New modules (if any): [name + reason — already confirmed with you in Phase 2]
+- network, alb, ecs, rds, ... (layout B: vendored into ./modules/ @ <lib-ref> — edit upstream first to change)
+### New modules (if any): [name + reason — project-local under ./modules/, designed reusable; say the word to promote upstream]
 
 ### Validate chain:
 - fmt ✓  validate ✓  tflint [n issues]  checkov [n failed]

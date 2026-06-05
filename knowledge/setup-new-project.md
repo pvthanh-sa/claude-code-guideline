@@ -11,25 +11,29 @@ This skill **bootstraps Claude Code Core for a new project** — auto-detects th
 
 ## 1. Install (once per machine)
 
-The skill lives in the `claude-code-guideline` repo. To make it available from any project on your machine, symlink it into your user-level skills directory. The same applies to the other **pipeline skills** (`spec-architect`, `iac-implement`, `infra-review`) — they are cross-project personal tools, so symlink them too (especially `spec-architect`, which runs **before** a project's `.claude/` even exists):
+The skill lives in the `claude-code-guideline` repo. To make it available from any project on your machine, symlink it into your user-level skills directory. The same applies to the other **pipeline skills** (`spec-architect`, `iac-implement`, `infra-review`, `infra-document`, `secret-scan`) — they are cross-project personal tools, so symlink them too (especially `spec-architect`, which runs **before** a project's `.claude/` even exists):
 
 ```bash
-mkdir -p ~/.claude/skills
-for s in init-project spec-architect iac-implement infra-review; do
+mkdir -p ~/.claude/skills ~/.claude/workflows
+for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
   ln -sfn ~/Documents/Devops/claude-code-guideline/.claude/skills/$s \
           ~/.claude/skills/$s
+done
+# /infra-review runs this from ~/.claude/workflows/ (machine-independent path)
+for wf in ~/Documents/Devops/claude-code-guideline/.claude/workflows/*.js; do
+  ln -sfn "$wf" ~/.claude/workflows/"$(basename "$wf")"
 done
 ```
 
 Verify:
 
 ```bash
-ls -la ~/.claude/skills/{init-project,spec-architect,iac-implement,infra-review}/SKILL.md
+ls -la ~/.claude/skills/{init-project,spec-architect,iac-implement,infra-review,infra-document,secret-scan}/SKILL.md
 ```
 
-> These four form the DevOps pipeline `/spec-architect → /init-project → /iac-implement →
-> /infra-review`. See [`devops-workflow.md`](devops-workflow.md) for the full flow and the
-> human approval gates (G1–G4).
+> These six form the DevOps pipeline `/spec-architect → /init-project → /iac-implement →
+> /infra-review → /infra-document → /secret-scan`. See [`devops-workflow.md`](devops-workflow.md)
+> for the full flow and the human approval gates (G1–G6).
 
 > **Why a symlink instead of a copy?**
 > When you `git pull` the guideline repo to update the skill, every project picks up the new version automatically.
@@ -114,12 +118,8 @@ Once the skill finishes:
    claude
    ```
 
-5. **Commit:**
-   ```bash
-   git add CLAUDE.md .claude/
-   git commit -m "chore: add Claude Code guidelines"
-   # DO NOT commit .mcp.json — it's already in .gitignore
-   ```
+5. **Commit when you're ready** — your call. Just never commit `.mcp.json` (it's already gitignored;
+   holds local profile/secrets).
 
 ---
 
@@ -216,12 +216,7 @@ overwriting them in place. Then it prints `git diff --stat -- .claude/` so you c
 > To **add** a newly-relevant skill/agent (not just refresh existing ones), use a full re-run —
 > sync never introduces new files.
 
-After reviewing the diff:
-
-```bash
-git add .claude/
-git commit -m "chore: sync Claude Code Core from guideline"
-```
+Review the diff (`git diff -- .claude/`), then commit whenever you choose — sync never auto-commits.
 
 ### Option B — full re-run `/init-project` (re-detect + re-copy)
 
@@ -256,7 +251,7 @@ symlink the skills/agents/rules **into each project** too? Because the two cases
 | | Skill symlink (§1) | Project `.claude/` content (Phase 4) |
 |---|---|---|
 | Lives at | `~/.claude/` (user-level) | `<project>/.claude/` |
-| Committed to git? | **No** — personal tool on your machine | **Yes** — `git add .claude/` (Phase 6, Step 5) |
+| Committed to git? | **No** — personal tool on your machine | **Yes** — tracked alongside the project code |
 | Shared / cloned elsewhere? | No | Yes — teammates, other machines, CI |
 
 Symlinking committed project content breaks in three ways:

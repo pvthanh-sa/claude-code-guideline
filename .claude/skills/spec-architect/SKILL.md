@@ -75,9 +75,8 @@ SGs, no public SSH, secrets in Secrets Manager/SSM (`.claude/rules/security.md`)
 
 ## Phase 3: Map to reusable modules (optional but recommended)
 
-If the custom module library is available — i.e. the user has `/add-dir`'d
-`/home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure`, or a `MODULES.md`
-catalog is readable there — pre-fill §8 by mapping each architecture component to an existing
+If the custom module library is available — i.e. the user has `/add-dir`'d the module library
+(at `$TF_MODULE_LIB`), or a `MODULES.md` catalog is readable there — pre-fill §8 by mapping each architecture component to an existing
 module (`network`, `alb`, `ecs`, `rds`, `elasticache_*`, `acm`, `waf_standard`, `cloudfront`,
 `s3_*`, …). Flag any component with **no** matching module as "new module needed". If the library
 isn't loaded, leave §8 as a TODO and note it.
@@ -136,6 +135,20 @@ values.
 ```
 
 </details>
+
+## Phase 4.5: Self-critique (completeness pass)
+
+Before presenting, **adversarially review your own spec** — a single design pass misses things.
+Re-read it as a skeptical reviewer and check:
+
+- **Missing requirements / unstated assumptions** — anything the user didn't specify that the design
+  silently assumed (capacity, data retention, auth, multi-AZ, backups, scaling)?
+- **Well-Architected gaps** — Reliability (SPOF, RTO/RPO), Security (IAM, encryption, exposure),
+  Cost (oversize, redundant NAT), Operability (monitoring, alarms).
+- **Downstream blockers** — anything too vague for Stage 3 (`/iac-implement`) to build from?
+
+Fold each gap into §9 as a new **Recommendation** (with a suggested default) or **Need from you**
+item, or into the warnings. Don't silently pass — surfacing a gap now is far cheaper than at G3/G4.
 
 ## Phase 5: STOP at Gate G1
 

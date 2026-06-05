@@ -163,7 +163,10 @@ Write a concise CLAUDE.md (~100-150 lines). **Only include sections that actuall
 Based on the detection matrix from Phase 1, selectively copy **only what's needed**.
 
 ```bash
-GUIDELINE_CLAUDE="$(dirname "$(dirname "$CLAUDE_SKILL_DIR")")"
+# Resolve the guideline repo via the symlinked skill. readlink -f follows the symlink to the real
+# path; the fallback covers $CLAUDE_SKILL_DIR being the symlink path itself or empty in some shells.
+SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/init-project}" 2>/dev/null)"
+GUIDELINE_CLAUDE="$(dirname "$(dirname "$SK")")"
 mkdir -p .claude/skills .claude/agents .claude/rules
 ````
 
@@ -479,14 +482,10 @@ After completing all phases, print a summary:
    [list other placeholders relevant to what was included]
 
 2. Review CLAUDE.md — add gotchas, verify commands are correct
+   (`.mcp.json` is gitignored — never commit it; it holds local profile/secrets)
 
-3. Commit to git:
-   git add CLAUDE.md .claude/
-   git commit -m "chore: add Claude Code guidelines"
-   # .mcp.json is gitignored — do not commit
-
-4. Next in the DevOps pipeline (Stage 3 — IaC): load the module library and implement:
-   /add-dir /home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure
+3. Next in the DevOps pipeline (Stage 3 — IaC): load the module library and implement:
+   /add-dir $TF_MODULE_LIB   # the custom module library (set TF_MODULE_LIB — Guide §1.3)
    /iac-implement docs/specs/<name>.spec.md <env-dir>
    (see knowledge/devops-workflow.md for the full Spec → Init → IaC → Review flow)
 ```
@@ -517,7 +516,8 @@ but you can refresh them on demand.
 ### Step 1: Resolve the guideline source
 
 ```bash
-GUIDELINE_CLAUDE="$(dirname "$(dirname "$CLAUDE_SKILL_DIR")")"
+SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/init-project}" 2>/dev/null)"
+GUIDELINE_CLAUDE="$(dirname "$(dirname "$SK")")"
 echo "Source: $GUIDELINE_CLAUDE"
 test -d "$GUIDELINE_CLAUDE/skills" || { echo "ERROR: guideline source not found — is the skill symlinked?"; exit 1; }
 ```
@@ -583,10 +583,8 @@ Print a recap and the review/commit hint — **do not commit automatically**:
 ### Skipped (installed here but absent from guideline — possibly renamed/removed upstream):
 [list, or "none"]
 
-### Review before committing:
+### Review the changes:
    git diff -- .claude/
-   git add .claude/
-   git commit -m "chore: sync Claude Code Core from guideline"
 
 CLAUDE.md, .mcp.json, and settings.json were intentionally left untouched.
 ```

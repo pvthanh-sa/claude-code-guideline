@@ -45,12 +45,12 @@ Enforced coding standards across different file types:
 
 ## 🔁 DevOps Pipeline (human-in-the-loop)
 
-Beyond individual skills, four of them chain into an end-to-end flow with a **human approval
-gate at every step** — Claude never auto-advances and never runs `terraform apply` or commits:
+Beyond individual skills, six of them chain into an end-to-end flow with a **human approval
+gate at every step** — Claude never auto-advances and never runs `terraform apply`, `git push`, or commits:
 
 ```
-/spec-architect ──G1──► /init-project ──G2──► /iac-implement ──G3──► /infra-review ──G4──►
-   build spec            bootstrap            Terraform / plan       parallel review
+/spec-architect → /init-project → /iac-implement → /infra-review → /infra-document → /secret-scan
+      G1               G2               G3               G4               G5              G6
 ```
 
 - **Stage 1 — `/spec-architect`**: co-design `docs/specs/<name>.spec.md` (Well-Architected + pricing).
@@ -59,6 +59,10 @@ gate at every step** — Claude never auto-advances and never runs `terraform ap
   environment → `fmt/validate/tflint/checkov/plan`.
 - **Stage 4 — `/infra-review`**: a parallel **Workflow** runs `security-auditor` + `infra-reviewer`
   + `cost-optimizer`, synthesized into one severity-ranked go/no-go report.
+- **Stage 5 — `/infra-document`**: generate a living `docs/infrastructure.md` + an AWS-grouped
+  `docs/diagrams/infra.drawio` (with a Mermaid block to verify), derived from the as-built Terraform.
+- **Stage 6 — `/secret-scan`**: tool-based secret gate before `git push` — installs a Betterleaks/
+  Gitleaks pre-push hook + CI workflow and scans on demand (defense-in-depth, Layer 2 + 3).
 
 **Detailed step-by-step guide (worked example, checklists, troubleshooting):**
 **[`knowledge/pipeline-usage-guide.md`](knowledge/pipeline-usage-guide.md)**.
