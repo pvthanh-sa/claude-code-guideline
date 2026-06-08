@@ -84,10 +84,11 @@ _Saved: docs/reviews/<env>-<date>.md_
 [summary, 2-4 lines]
 
 ### Severity:  Critical X · High Y · Medium Z · Low W
+### Security coverage (Well-Architected Security Pillar): IAM a · Detective b · Infra-protection c · Data-protection d · Incident-response e
 ### Estimated savings: ~$N/month
 
 ### Must fix before apply (Critical/High):
-1. [severity][source] title — location → remediation
+1. [severity][source][wa-category] title — location → remediation
 ...
 
 ### Top cost-saving recommendations:

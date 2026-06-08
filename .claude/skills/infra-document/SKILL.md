@@ -56,10 +56,33 @@ test -f "$TPL" && echo "template: $TPL" \
   || echo "ERROR: template not found — is the guideline repo present and the skill symlinked? (Guide §1.1)"
 ```
 
-`Read` `$TPL` (10 sections) and fill it from Phase 1. Rules:
+`Read` `$TPL` (8 sections) and fill it from Phase 1. The template is **comprehension-first** — a
+reader should finish §1–§3 with a correct mental model, then use §4–§8 as reference. Rules:
 - State facts derived from code; if something isn't in the code/spec, mark it `TODO` — don't guess.
-- §2 contains the diagram: a PNG reference **and** a temporary Mermaid block (see Phase 4).
-- Link out rather than duplicate: spec, review report, runbooks, monitoring dashboards.
+- **§1 Overview** — include the **"big picture"** paragraph: what enters, what happens, what comes
+  out, and the 2–4 main building blocks, in **plain language with no resource names/jargon**. A
+  newcomer reads only this and gets the gist.
+- **§2** holds the diagram (PNG ref + temporary Mermaid, see Phase 4), a **"How to read this
+  diagram"** line (shapes/colors/numbered edges — see Phase 3), and a one-line **numbered-path key**
+  (`① → ② → ③ …`) that decodes the diagram's edges. There is **no separate data-flow section** — that
+  key plus the §3 walkthrough (which references the same numbers) covers it.
+- **§3 How it works (architecture walkthrough)** — the section that makes the infra *click*. This is
+  the most important content in the doc; do not reduce it to a table. **Format for scanning, not an
+  essay** — a DevOps/SA should skim the bold labels and bullets and get it:
+  - Structure as a few **labeled blocks** (e.g. one bold lead-in per subsystem/phase, plus a final
+    **"Key design decisions"** block). Use **short bullets**, not dense multi-line paragraphs.
+  - Group by **subsystem or by flow**, not by Terraform module.
+  - For each major part answer three things: **what it is · why it's here · what it connects to.**
+  - Call out **key design decisions and the non-obvious** ("X is the handoff between the two halves",
+    "Y exists only so Z passes its check", "single-AZ on purpose — it's a dev lab").
+  - **Name the same components shown in the diagram** and **weave the diagram's ① ② ③ numbers into
+    the bullets**, so this section doubles as the flow explanation (no separate data-flow section).
+  - Keep it tight — a handful of labeled blocks, a few bullets each; push the exhaustive list to §4.
+- §4 Components is the **reference table**; §3 explains, §4 enumerates — don't duplicate prose into
+  the table.
+- Link out rather than duplicate: spec, review report, dashboards.
+- The template intentionally has **no Operations/runbook or change-log section** — this doc describes
+  what the infrastructure *is*, not how to operate it. Keep ops/runbooks in their own doc.
 
 ## Phase 3: Write `docs/diagrams/infra.drawio` (one combined diagram)
 
@@ -76,6 +99,9 @@ Create `docs/diagrams/` if needed. Hand-author **one** combined diagram followin
   relationships you found in `main.tf`.
 - If unsure of an exact `resIcon` name, use the labeled fallback box (reference §Special shapes)
   rather than a wrong stencil that renders empty.
+- **Write the matching "How to read this diagram" line into §2** of `infrastructure.md` — explain
+  the conventions you actually used (nesting, numbered solid vs dashed edges, category colors) so a
+  reader can decode the picture without guessing. The diagram and this legend must agree.
 
 Validate the file is well-formed before finishing. Use a parser that does **not** resolve external
 entities or hit the network (avoids XXE / billion-laughs — drawio files need no DTD/entities):
@@ -90,7 +116,7 @@ python3 -c "import defusedxml.ElementTree as ET; ET.parse('docs/diagrams/infra.d
 ## Phase 3.5: Coverage check (diagram vs code)
 
 Make sure the diagram didn't drop a component. List the module instances in the env's `main.tf` and
-confirm each appears as a node in `infra.drawio` (and a row in §3 Components):
+confirm each appears as a node in `infra.drawio` (and a row in §4 Components):
 
 ```bash
 grep -nE '^[[:space:]]*module[[:space:]]+"' <env-dir>/main.tf
@@ -146,7 +172,7 @@ Written:
 👉 Next:
    1) Open docs/diagrams/infra.drawio in draw.io and check it matches the Mermaid block.
    2) Export it to docs/diagrams/infra.png, then delete the Mermaid verification block.
-   3) Review docs/infrastructure.md, then commit (I do NOT commit).
+   3) Review docs/infrastructure.md — does §1–§3 make the infra clear on a single read?
    Re-run /infra-document anytime the infra changes — it's a living document.
 ```
 

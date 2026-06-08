@@ -217,6 +217,28 @@ terraform init
 terraform plan -out=tfplan
 ```
 
+**IAM policy validation (AWS-native, complements checkov)** — run when the change defines IAM
+policies. `checkov` catches misconfig patterns; AWS **Access Analyzer** `validate-policy` adds
+grammar + best-practice + overly-permissive findings that linters miss. Best-effort (needs AWS
+creds; skip cleanly if unavailable):
+
+```bash
+# Only if IAM policies are present in this env
+if grep -rqE 'aws_iam_policy|aws_iam_role_policy|aws_iam_policy_document|assume_role_policy' . --include=*.tf; then
+  terraform show -json tfplan > tfplan.json 2>/dev/null || true
+  # Extract each rendered policy document from the plan and validate it. For every IAM policy /
+  # assume-role / resource policy JSON found, run (IDENTITY_POLICY or RESOURCE_POLICY as appropriate):
+  #   aws accessanalyzer validate-policy --policy-type IDENTITY_POLICY \
+  #     --policy-document file://<policy>.json --query 'findings[].{type:findingType,detail:findingDetails}'
+  # Surface every SECURITY_WARNING / ERROR / WARNING (e.g. wildcard "*" action/resource, missing
+  # conditions). Treat ERROR/SECURITY_WARNING as must-fix; fold into the G3 report. || true on failure.
+  rm -f tfplan.json
+fi
+```
+
+> If creds aren't available at G3, defer this to G4 — `/infra-review`'s `security-auditor` also flags
+> IAM least-privilege issues. Access Analyzer here is the *deterministic* complement (tool, not AI).
+
 (The PostToolUse hook already auto-runs `terraform fmt` on edited `.tf` files.)
 
 ## Phase 5: STOP at Gate G3
@@ -230,7 +252,7 @@ terraform plan -out=tfplan
 ### New modules (if any): [name + reason — project-local under ./modules/, designed reusable; say the word to promote upstream]
 
 ### Validate chain:
-- fmt ✓  validate ✓  tflint [n issues]  checkov [n failed]
+- fmt ✓  validate ✓  tflint [n issues]  checkov [n failed]  [IAM Access Analyzer: n findings | n/a]
 
 ### terraform plan: [summary: +X / ~Y / -Z resources]
 

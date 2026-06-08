@@ -29,6 +29,11 @@ const FINDINGS = {
           location: { type: 'string', description: 'file:line or resource' },
           risk: { type: 'string' },
           remediation: { type: 'string' },
+          // Well-Architected Security Pillar category (security findings only; omit for infra).
+          waCategory: {
+            type: 'string',
+            enum: ['iam', 'detective-controls', 'infrastructure-protection', 'data-protection', 'incident-response'],
+          },
         },
       },
     },
@@ -81,10 +86,23 @@ const REPORT = {
           location: { type: 'string' },
           remediation: { type: 'string' },
           source: { type: 'string', enum: ['security', 'infra', 'cost'] },
+          waCategory: {
+            type: 'string',
+            enum: ['iam', 'detective-controls', 'infrastructure-protection', 'data-protection', 'incident-response'],
+          },
         },
       },
     },
     mustFixBeforeApply: { type: 'array', items: { type: 'string' } },
+    // Count of security findings per Well-Architected Security Pillar category.
+    waSecurityCounts: {
+      type: 'object',
+      properties: {
+        iam: { type: 'number' }, 'detective-controls': { type: 'number' },
+        'infrastructure-protection': { type: 'number' }, 'data-protection': { type: 'number' },
+        'incident-response': { type: 'number' },
+      },
+    },
   },
 }
 
@@ -93,7 +111,10 @@ const secPrompt = (round) =>
   `You are auditing the Terraform infrastructure under "${target}". Perform a full security ` +
   `audit (secrets, IAM least-privilege, encryption at rest/in transit, network/SG exposure, ` +
   `container security, CI/CD/OIDC). Report every finding with severity, file:line location, ` +
-  `risk, and remediation.` +
+  `risk, and remediation. Also classify each finding by its AWS Well-Architected Security Pillar ` +
+  `category in "waCategory": iam (identity & access) | detective-controls (logging/monitoring/audit, ` +
+  `e.g. CloudTrail, Config, flow logs) | infrastructure-protection (network/SG/WAF/boundaries) | ` +
+  `data-protection (encryption, secrets, key mgmt) | incident-response (recoverability, alarms, runbooks).` +
   (round > 1 ? ` This is review ROUND ${round}: surface only LESS-obvious issues not caught earlier — edge cases, cross-cutting and second-order risks.` : '')
 
 const infraPrompt = (round) =>
@@ -158,7 +179,9 @@ const report = await agent(
   `Merge this review of "${target}" into ONE report. Findings are already deduped; rank by ` +
   `severity, count by severity, sum estimated monthly savings from COST, and give a go/no-go ` +
   `recommendation: "no-go" if any Critical, "go-with-fixes" if any High, else "go". Put the ` +
-  `Critical/High items in mustFixBeforeApply. Set each topFindings.source from the finding's "source" field.\n\n` +
+  `Critical/High items in mustFixBeforeApply. Set each topFindings.source from the finding's "source" field, ` +
+  `and carry over each security finding's "waCategory". Also tally security findings per ` +
+  `Well-Architected Security category into waSecurityCounts so the human sees coverage across the pillar.\n\n` +
   `FINDINGS (security+infra, deduped over ${DEEP ? 'multiple rounds' : '1 round'}):\n${JSON.stringify(findings)}\n\n` +
   `COST:\n${JSON.stringify(cost)}`,
   { label: 'synthesize', phase: 'Synthesize', schema: REPORT },

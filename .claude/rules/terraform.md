@@ -45,5 +45,8 @@ globs:
 
 ## Validation
 - Run after every change: `terraform fmt` → `terraform validate` → `tflint` → `checkov`
+- For changes that define IAM policies, also validate with AWS Access Analyzer
+  (`aws accessanalyzer validate-policy`) — deterministic IAM grammar/best-practice check that
+  complements checkov (needs creds; best-effort)
 - Never run `terraform apply -auto-approve` in production
 - Always use `terraform plan -out=tfplan` then `terraform apply tfplan`
