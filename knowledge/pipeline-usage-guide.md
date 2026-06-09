@@ -427,18 +427,26 @@ directory per convention, and stop at `terraform plan` for you to review.
        to change a vendored module, edit it **upstream first**, re-validate, then re-copy — never
        edit the project's copy in isolation (that silently forks it).
 
-5. **Validate chain:**
+5. **Validate chain** (two misconfig scanners — Checkov + Trivy catch different things):
    ```bash
    terraform fmt -recursive
    terraform init -backend=false && terraform validate
    tflint
    checkov -d .
+   trivy config . --severity HIGH,CRITICAL
+   # + AWS Access Analyzer on any IAM policies (deterministic, needs creds)
    ```
    Then (once you confirm credentials/backend are ready):
    ```bash
    terraform init
    terraform plan -out=tfplan
    ```
+6. **Installs the CI security gate** — `.github/workflows/iac-scan.yml` (idempotent, drift-aware).
+   It re-runs fmt/validate/tflint/Checkov/Trivy on **every PR** touching `.tf` (defense-in-depth:
+   local gate + server-side gate). Mark its `iac-scan` check **Required** in branch protection.
+
+> 🛠️ **Run any scan by hand?** All the CLI commands (IaC + secrets, binary + Docker, tuning) are in
+> [`security-scans-cli.md`](security-scans-cli.md).
 
 ### 4. 🚪 GATE G3 — you approve the plan
 
@@ -447,7 +455,7 @@ Your job:
 
 - [ ] Read `terraform plan` — right resources? right counts? nothing deleted by mistake?
 - [ ] Module reuse sensible? (no unexpected new modules)
-- [ ] `checkov`/`tflint` free of serious issues?
+- [ ] `checkov` / `trivy config` / `tflint` free of serious issues? (CI `iac-scan` will re-check on PR)
 - [ ] **You apply** (Claude does NOT auto-apply):
   ```bash
   terraform apply tfplan
@@ -609,6 +617,9 @@ each time. There are four ways to run it (the first two need no AI, no typing):
 
 > Re-run `/secret-scan --setup` only when the templates change (drift) or for a new project — not
 > before every scan.
+
+> 🛠️ Full CLI cheat-sheet for secrets **and** IaC scans (install, Docker fallback, suppressions):
+> [`security-scans-cli.md`](security-scans-cli.md).
 
 ### 3. 🚪 GATE G6 — you decide
 

@@ -198,6 +198,29 @@ Honor all conventions: naming `${var.app_name}-<resource-type>`, tagging
 `merge(var.tags, { Name = "...", ManagedBy = "Terraform" })`, `for_each` over `count`,
 `data.aws_iam_policy_document` for IAM, `sensitive = true` for secret outputs.
 
+## Phase 3.5: Install the CI security gate (defense-in-depth)
+
+The local validate chain (Phase 4) is **Layer 2** — it only runs when a human runs this skill.
+Production also enforces it **server-side on every PR** (Layer 3), so nothing merges unscanned. Install
+(or drift-refresh) the IaC CI workflow from the template, resolving it via the symlinked skill
+(`readlink -f`, same mechanism as `/secret-scan`):
+
+```bash
+SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/iac-implement}" 2>/dev/null)"
+GUIDELINE="$(dirname "$(dirname "$(dirname "$SK")")")"
+TPL="$GUIDELINE/knowledge/templates/iac-scan/iac-scan.yml"
+mkdir -p .github/workflows
+DST=.github/workflows/iac-scan.yml
+if [ ! -f "$DST" ]; then cp "$TPL" "$DST"; echo "created  $DST";
+elif ! cmp -s "$TPL" "$DST"; then cp "$TPL" "$DST"; echo "refreshed $DST (was stale vs template)";
+else echo "ok       $DST (current)"; fi
+```
+
+It runs `fmt → validate → tflint → Checkov (report) → Trivy config (blocks on HIGH/CRITICAL)` on PRs
+touching `.tf`, uploading SARIF to the Security tab (details + tuning: `$GUIDELINE/knowledge/templates/iac-scan/README.md`).
+Tell the user to mark the `iac-scan` check **Required** in branch protection. It's tracked — commit it
+with the IaC (the user controls when). This complements the secret-scan CI gate (Stage 6), not replaces it.
+
 ## Phase 4: Validate chain (per terraform.md)
 
 Run, in order, and report each result:
@@ -206,9 +229,14 @@ Run, in order, and report each result:
 terraform fmt -recursive
 terraform init -backend=false   # validate without touching remote state
 terraform validate
-tflint || true
-checkov -d . --quiet || true
+tflint --recursive --format compact --minimum-failure-severity=error || true   # errors block; warnings just print (matches CI)
+checkov -d . --quiet --soft-fail || true   # report-only (matches CI)
+trivy config . --severity HIGH,CRITICAL || true   # 2nd misconfig scanner (tfsec successor); different ruleset than checkov
 ```
+
+Run **both** Checkov and Trivy — their rulesets differ, so each catches misconfigs the other misses
+(this is the production norm). Report counts from each. If `trivy` isn't installed, note it and
+continue (the CI gate below runs it regardless).
 
 Then, only if the user confirms backend/credentials are ready:
 
@@ -251,8 +279,9 @@ fi
 - network, alb, ecs, rds, ... (layout B: vendored into ./modules/ @ <lib-ref> — edit upstream first to change)
 ### New modules (if any): [name + reason — project-local under ./modules/, designed reusable; say the word to promote upstream]
 
-### Validate chain:
-- fmt ✓  validate ✓  tflint [n issues]  checkov [n failed]  [IAM Access Analyzer: n findings | n/a]
+### Validate chain (local — Layer 2):
+- fmt ✓  validate ✓  tflint [n issues]  checkov [n failed]  trivy config [n HIGH/CRIT]  [IAM Access Analyzer: n findings | n/a]
+### CI gate (Layer 3): .github/workflows/iac-scan.yml [installed/refreshed/current] — mark its check Required in branch protection
 
 ### terraform plan: [summary: +X / ~Y / -Z resources]
 

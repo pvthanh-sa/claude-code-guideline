@@ -30,7 +30,7 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
        │
    ┌───▼────────────────┐   ── G3 ──►  you approve `terraform plan` BEFORE apply
    │ 3. IAC            │
-   │   /iac-implement   │   reuse custom modules → scaffold env → fmt/validate/tflint/checkov/plan
+   │   /iac-implement   │   reuse/author modules → scaffold env → CI gate → fmt/validate/tflint/checkov/trivy/plan
    └───┬────────────────┘
        │
    ┌───▼────────────────┐   ── G4 ──►  you approve the report → go / fix / no-go
@@ -118,9 +118,12 @@ First, load the module library:
 /add-dir /home/lg-vietnam007/Desktop/Lion_Graden/clinic_online/new-clinic-infrastructure/environments/tokyo-dev
 ```
 
-The skill reads/generates `MODULES.md` (catalog of 36 modules), maps spec → **reusable** modules,
-scaffolds the environment directory per the tokyo-dev convention, then runs
-`fmt → validate → tflint → checkov → plan`.
+The skill reads/generates `MODULES.md` (catalog of 36 modules), maps spec → **reusable** modules
+(or authors new project-local ones), scaffolds the env per the tokyo-dev convention, installs the
+**CI security gate** (`.github/workflows/iac-scan.yml`), then runs the validate chain
+`fmt → validate → tflint → checkov → trivy config → plan` (+ AWS Access Analyzer on IAM policies).
+Two misconfig scanners (Checkov + Trivy) catch different issues; the same checks re-run in CI on
+every PR (defense-in-depth).
 **→ Stop at G3** with the `plan` output. You run `terraform apply tfplan` once approved.
 
 ### Step 4 — Review before/after deploy: `/infra-review <env-dir>`

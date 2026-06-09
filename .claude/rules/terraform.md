@@ -44,9 +44,13 @@ globs:
 - Use `data.aws_iam_policy_document` for IAM policies (not inline JSON)
 
 ## Validation
-- Run after every change: `terraform fmt` → `terraform validate` → `tflint` → `checkov`
+- Run after every change: `terraform fmt` → `terraform validate` → `tflint` → `checkov` → `trivy config`
+- Use **two misconfig scanners** — `checkov` (policy-as-code) and `trivy config` (tfsec successor);
+  different rulesets catch different issues (production norm)
 - For changes that define IAM policies, also validate with AWS Access Analyzer
   (`aws accessanalyzer validate-policy`) — deterministic IAM grammar/best-practice check that
   complements checkov (needs creds; best-effort)
+- **Enforce the same checks in CI** (defense-in-depth): a `.github/workflows/iac-scan.yml` gate runs
+  fmt/validate/tflint/checkov/trivy on every PR touching `.tf` — the local gate alone is not enough
 - Never run `terraform apply -auto-approve` in production
 - Always use `terraform plan -out=tfplan` then `terraform apply tfplan`

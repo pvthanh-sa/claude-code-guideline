@@ -31,7 +31,8 @@ Communicate in Vietnamese when user speaks Vietnamese.
 - Tags: `merge(var.tags, { Name = "...", ManagedBy = "Terraform" })`
 - Backend: S3 with `use_lockfile = true`
 - Always pin provider versions with `>=` constraints
-- Validate chain: `terraform fmt` → `terraform validate` → `tflint` → `checkov` → `terraform plan`
+- Validate chain: `terraform fmt` → `terraform validate` → `tflint` → `checkov` → `trivy config` → `terraform plan`
+- Enforce the same IaC checks in CI (`.github/workflows/iac-scan.yml`) on every PR — defense-in-depth
 
 ### GitHub Actions
 - OIDC for AWS auth (never long-lived keys)
