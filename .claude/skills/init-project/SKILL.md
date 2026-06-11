@@ -449,11 +449,21 @@ Build `.mcp.json` using only the selected entries. Reference templates:
 }
 ```
 
-**Add `.mcp.json` to `.gitignore`:**
+**Ignore the Claude Code footprint in `.gitignore`** (the project repo may be **public** — don't
+expose internal tooling; `.mcp.json` also holds local profile/secrets). The `.claude/` tooling is
+**local, regenerated per machine** via `/init-project` (and refreshed by `--sync`), so it doesn't
+need to be committed:
 
 ```bash
-grep -q "\.mcp\.json" .gitignore 2>/dev/null || echo ".mcp.json" >> .gitignore
+{
+  grep -qxF ".mcp.json" .gitignore 2>/dev/null || echo ".mcp.json"
+  grep -qxF ".claude/"  .gitignore 2>/dev/null || echo ".claude/"
+} >> .gitignore 2>/dev/null
 ```
+
+`CLAUDE.md` stays **tracked** — it's lightweight project guidance (stack/commands), useful to share
+and not sensitive. (Private team repo and you *want* to commit the skills/agents/rules? Remove
+`.claude/` from `.gitignore`.)
 
 ---
 
@@ -468,11 +478,9 @@ After completing all phases, print a summary:
 [List what was detected — tech stack, CI/CD platform, AWS services]
 
 ### Files created:
-- [CLAUDE.md path]
-- .claude/settings.json
-- .claude/skills/  [N skills copied: list them]
-- .claude/agents/  [N agents copied: list them]
-- .claude/rules/   [N rules copied: list them]
+- [CLAUDE.md path]  (tracked — shareable project guidance)
+- .claude/  (gitignored — local tooling, regenerated via /init-project):
+  - settings.json · skills/ [N: list] · agents/ [N: list] · rules/ [N: list]
 - .mcp.json (gitignored) — [N MCP servers configured]
 
 ### Next steps:

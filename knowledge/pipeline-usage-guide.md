@@ -156,7 +156,7 @@ claude --mcp-config ~/.claude/spec-mcp.json
 | 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
 | 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
 | 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md` | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
-| 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` | **G5** | doc accurate? diagram correct?     | export PNG, delete Mermaid, commit              |
+| 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` + `README.md` | **G5** | doc accurate? diagram correct?     | export PNG, delete Mermaid, commit              |
 | 6   | `/secret-scan`                | scan result + guardrail (hook + CI)     | **G6** | clean? real leak to rotate?        | `git push` (hook + CI re-scan)                  |
 
 **Safety invariant:** `.claude/settings.json` (**copied** into the project by `/init-project` if the
@@ -337,13 +337,16 @@ the folder is almost empty, then run 6 phases: explore → analyze → CLAUDE.md
 ### 3. Result
 
 ```
-CLAUDE.md
+CLAUDE.md          (tracked — shareable project guidance)
 .claude/skills/    (devops-engineer, terraform-engineer, cloud-architect, postgres-pro, ...)
 .claude/agents/    (infra-reviewer, cost-optimizer, security-auditor, incident-responder)
 .claude/rules/     (security, terraform, docker, cicd, ...)
 .claude/settings.json
 .mcp.json          (gitignored — contains placeholders)
 ```
+> `/init-project` adds **`.claude/` and `.mcp.json` to `.gitignore`** — the repo may be **public**, and
+> the `.claude/` tooling is internal + regenerated per machine via `/init-project` (`--sync` to refresh).
+> Only `CLAUDE.md` is tracked. (Private team repo? Remove `.claude/` from `.gitignore` to share it.)
 
 ### 4. 🚪 GATE G2 — you approve + fill placeholders
 
@@ -363,7 +366,8 @@ Claude **STOPS**. Your job:
   /exit
   claude
   ```
-- [ ] Commit whenever you're ready — your call (just never commit `.mcp.json`; it's gitignored).
+- [ ] Commit whenever you're ready — your call. `.claude/` and `.mcp.json` are gitignored (only
+      `CLAUDE.md` + your code/docs get committed).
 
 ➡️ Go to Step 3.
 
@@ -552,14 +556,16 @@ diagram, so the team has one source of truth that stays in sync with the code.
 
 1. Derives the topology from the env's `main.tf` (how modules wire together) + the spec + `MODULES.md`,
    and reads the latest **`docs/reviews/<env>-*.md`** to fill the security-posture section (§7).
-2. Writes **`docs/infrastructure.md`** (10 sections: overview, diagram, components, network, data
-   flow, environments, security, cost, operations, change log).
+2. Writes **`docs/infrastructure.md`** (8 sections, comprehension-first: overview → diagram (+ numbered
+   key) → **how it works** walkthrough → components → network → environments → security → cost).
 3. Hand-authors **`docs/diagrams/infra.drawio`** — one combined diagram with AWS Cloud / Region /
    VPC / subnet groups (proven `mxgraph.aws4` styles), validated as well-formed XML.
 4. Embeds a **temporary Mermaid block** in §2 mirroring the diagram, so you can verify it without
    opening draw.io (guards against a malformed/incorrect `.drawio`).
 5. **Coverage check:** confirms every `module` in `main.tf` appears as a node in the diagram (and a
-   row in §3) — flags anything drawn-but-missing before you review.
+   row in §4) — flags anything drawn-but-missing before you review.
+6. Creates/refreshes a top-level **`README.md`** — the public-facing entry point (overview, layout,
+   prerequisites, deploy steps, CI gates, links to the docs). Won't clobber an existing README.
 
 ### 3. 🚪 GATE G5 — you approve
 

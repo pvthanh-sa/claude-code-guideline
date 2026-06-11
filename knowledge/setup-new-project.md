@@ -243,31 +243,28 @@ Review the diff (`git diff -- .claude/`), then commit whenever you choose — sy
 
 ---
 
-## 6. Why copy, not symlink, for project content
+## 6. Project `.claude/` is gitignored + copied (not committed, not symlinked)
 
-A reasonable question: since the **skill itself** is symlinked (§1) so it auto-updates, why not
-symlink the skills/agents/rules **into each project** too? Because the two cases are different:
+`/init-project` adds `.claude/` and `.mcp.json` to the project's `.gitignore`. The project repo may
+go **public**, and the `.claude/` skills/agents/rules are **internal tooling** — they shouldn't be
+exposed (and `.mcp.json` holds local profile/secrets). So the project's `.claude/` is **local,
+gitignored, regenerated per machine** via `/init-project` and refreshed via `--sync`.
 
-| | Skill symlink (§1) | Project `.claude/` content (Phase 4) |
-|---|---|---|
-| Lives at | `~/.claude/` (user-level) | `<project>/.claude/` |
-| Committed to git? | **No** — personal tool on your machine | **Yes** — tracked alongside the project code |
-| Shared / cloned elsewhere? | No | Yes — teammates, other machines, CI |
+`CLAUDE.md` is the exception — it stays **tracked**: lightweight project guidance (stack, commands,
+gotchas), useful to share and not sensitive.
 
-Symlinking committed project content breaks in three ways:
+| | Skill (§1) | Project `.claude/` (Phase 4) | `CLAUDE.md` |
+|---|---|---|---|
+| Lives at | `~/.claude/` | `<project>/.claude/` | `<project>/` |
+| In git? | No (personal tool) | **No — gitignored** (local tooling) | **Yes — tracked** |
 
-1. **Portability.** `git add` on a symlink stores the *link path*, not the content. Anyone who
-   clones the repo on another machine (or CI) gets a **dangling symlink** pointing at an absolute
-   path (`/home/.../claude-code-guideline/...`) that only exists on your machine — so `.claude/`
-   is effectively empty for them.
-2. **Reproducibility.** A copy is a **pinned snapshot** — the project records exactly which version
-   of each rule it was set up with. A symlink would let an upstream edit silently change agent
-   behaviour on an old project with no commit, PR, or review.
-3. **Version-control intent.** Committing `.claude/` exists precisely so the config is reviewable
-   and rollback-able alongside the code. Symlinks defeat that.
+Why **copy** the content into the project (not symlink it) even though it's gitignored: a copy is a
+**stable local snapshot** you refresh deliberately with `--sync` (see it in `git diff` before
+nothing, since it's ignored — but you control when it changes). A symlink would instead be a fragile
+absolute-path link into the guideline repo, and would be gitignored all the same — no upside.
 
-`--sync` gives you the freshness benefit of symlinks while keeping copies portable and reviewable:
-you pull updates **on demand**, see them in `git diff`, and commit them deliberately.
+> **Private team repo** and you *do* want to share the skills/agents/rules with teammates? Remove
+> `.claude/` from `.gitignore` and commit it — then `--sync` + `git diff` review applies as before.
 
 ---
 

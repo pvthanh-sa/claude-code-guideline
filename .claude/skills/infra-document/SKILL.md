@@ -1,6 +1,6 @@
 ---
 name: infra-document
-description: 'Stage 5 of the DevOps pipeline. Generate a living infrastructure document for an environment — derives the architecture from the actual Terraform module wiring + spec, writes docs/infrastructure.md, an editable docs/diagrams/infra.drawio (AWS-grouped), and a temporary Mermaid block for verification. STOPS at human gate G5; never commits.'
+description: 'Stage 5 of the DevOps pipeline. Generate a living infrastructure document for an environment — derives the architecture from the actual Terraform module wiring + spec, writes docs/infrastructure.md, an editable docs/diagrams/infra.drawio (AWS-grouped), a temporary Mermaid block for verification, and a top-level README.md entry point. STOPS at human gate G5; never commits.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Write
 argument-hint: '[env-dir]'
@@ -22,6 +22,7 @@ doc and diagram stay accurate (derived from code, not hand-maintained).
 - `docs/infrastructure.md` — the document (template: `knowledge/templates/infra-document-template.md`)
 - `docs/diagrams/infra.drawio` — editable source diagram (one combined AWS-grouped diagram)
 - A temporary **Mermaid** block inside `infrastructure.md` for cross-checking the `.drawio`
+- `README.md` — top-level repo entry point (Phase 4.5; created or refreshed, never clobbered)
 
 ---
 
@@ -155,6 +156,47 @@ flowchart LR
 The Mermaid must mirror the `.drawio` exactly (same nodes + edges). It is **disposable** — tell the
 user to delete it after they confirm the drawio and export the PNG.
 
+## Phase 4.5: Project README (repo entry point)
+
+Write a top-level `README.md` — the **entry point** a reader (or a public visitor) sees first. Keep
+it **short**: it orients and links out; `docs/infrastructure.md` holds the depth (don't duplicate).
+**If `README.md` already exists, don't clobber it** — refresh only the pipeline-managed sections (or
+show a diff and ask). Derive everything from the same facts as Phase 1.
+
+Structure:
+```markdown
+# <project> — <one-line what-it-is>
+
+<2–3 sentence overview: what this provisions and why. Plain language.>
+
+## Stack
+<key services / tools — one line>
+
+## Layout
+- `environments/<env>/` — Terraform root(s)   ·   `modules/` — reused modules
+- `docs/specs/` — design spec   ·   `docs/infrastructure.md` — **architecture & diagram (start here)**
+- `docs/reviews/` — security/cost review reports
+
+## Prerequisites
+<terraform version, AWS profile/creds, TF_MODULE_LIB if modules are vendored, tflint/checkov/trivy for local scans>
+
+## Deploy
+```bash
+cd environments/<env>
+terraform init -backend-config=<backend>.hcl
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+## Security / CI
+- IaC scan gate: `.github/workflows/iac-scan.yml` (fmt/validate/tflint/checkov/trivy on every PR)
+- Secret scan gate: `.github/workflows/secret-scan.yml` + local pre-push hook
+- Never commit `.mcp.json` / `backend-*.hcl` (gitignored).
+```
+
+Adjust sections to what actually exists (omit Deploy specifics you can't derive; mark TODO rather
+than guess). This is **public-facing**, so no account IDs, ARNs, or secrets in the README.
+
 ## Phase 5: STOP at Gate G5
 
 ```
@@ -163,6 +205,7 @@ user to delete it after they confirm the drawio and export the PNG.
 Written:
 - docs/infrastructure.md
 - docs/diagrams/infra.drawio   (drawio XML OK)
+- README.md   (repo entry point — created/refreshed)
 - Mermaid verification block embedded in §2 (temporary)
 
 ### Diagram summary: [N nodes, M edges; ingress → compute → data]

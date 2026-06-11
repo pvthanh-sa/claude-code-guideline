@@ -40,7 +40,7 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
        │
    ┌───▼────────────────┐   ── G5 ──►  you approve the document + diagram
    │ 5. DOCUMENT       │
-   │   /infra-document  │   living doc + AWS-grouped infra.drawio (+ Mermaid verify)
+   │   /infra-document  │   living doc + AWS-grouped infra.drawio (+ Mermaid verify) + README
    └───┬────────────────┘
        │
    ┌───▼────────────────┐   ── G6 ──►  secret scan clean → you `git push`
@@ -61,10 +61,10 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
 | Gate   | After step        | You receive                                                                | You decide                                                                 | After approval, run                                       |
 | ------ | ----------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
 | **G1** | `/spec-architect` | `docs/specs/<name>.spec.md` + list of open decisions                       | Is the spec right? Services/cost/SLO OK?                                   | create project folder → `/init-project`                   |
-| **G2** | `/init-project`   | `CLAUDE.md`, `.mcp.json`, copied skills/agents/rules                       | Stack detected correctly? CLAUDE.md correct? Fill `.mcp.json` placeholders | `/add-dir` custom-infra → `/iac-implement <spec>`         |
+| **G2** | `/init-project`   | `CLAUDE.md` (tracked) + `.claude/` & `.mcp.json` (**gitignored** — public-repo safe)      | Stack detected correctly? CLAUDE.md correct? Fill `.mcp.json` placeholders | `/add-dir` custom-infra → `/iac-implement <spec>`         |
 | **G3** | `/iac-implement`  | `terraform plan` output (NO apply)                                         | Plan correct? Resources sensible? Right modules reused?                    | you run `terraform apply tfplan` OR `/infra-review <env>` |
 | **G4** | `/infra-review`   | one merged report (severity + savings + go/no-go), saved to `docs/reviews/<env>-<date>.md` | Which items to fix? Go or no-go?                                           | ask Claude to fix specific items, then `/infra-document`  |
-| **G5** | `/infra-document` | `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (+ Mermaid verify) | Doc accurate? Diagram correct?                                             | export drawio→PNG, delete Mermaid, commit                 |
+| **G5** | `/infra-document` | `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (+ Mermaid verify) + `README.md` | Doc accurate? Diagram correct? README clear?                              | export drawio→PNG, delete Mermaid, commit                 |
 | **G6** | `/secret-scan`    | scan result + installed guardrail (Betterleaks/Gitleaks)                   | Clean? any real leak to rotate?                                            | `git push` (pre-push hook + CI re-scan as backstop)       |
 
 > **Safety invariant:** `settings.json` (copied into the project by `/init-project` if absent)
