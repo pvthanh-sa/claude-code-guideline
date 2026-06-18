@@ -28,7 +28,13 @@ SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/secret-scan}" 2>/dev
 GUIDELINE="$(dirname "$(dirname "$(dirname "$SK")")")"
 TPL="$GUIDELINE/knowledge/templates/secret-scan"
 test -d "$TPL" || { echo "ERROR: templates not found at $TPL — is the guideline repo present and the skill symlinked? (Guide §1.1)"; exit 1; }
+# GUARD: secret-scan is meaningless outside a git repo, and --setup would otherwise create
+# .githooks/ + .github/ files then fail on `git config core.hooksPath`. Check up front, both modes.
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "ERROR: not inside a git repository — cd into your project repo first (git init if new)."; exit 1; }
 ```
+
+> The per-file installer below also verifies each template exists before copying — a template
+> removed/renamed upstream surfaces as an error, not a silent "created" with no source.
 
 ---
 
@@ -46,6 +52,7 @@ mkdir -p .githooks .github/workflows
 # install_or_refresh <template-file> <dest>: create if missing, refresh if it drifted from template.
 install_or_refresh() {
   src="$1"; dst="$2"
+  [ -f "$src" ] || { echo "ERROR: template missing: $src — guideline repo incomplete"; return 1; }
   if [ ! -f "$dst" ]; then cp "$src" "$dst"; echo "created  $dst";
   elif ! cmp -s "$src" "$dst"; then cp "$src" "$dst"; echo "refreshed $dst (was stale vs template)";
   else echo "ok       $dst (current)"; fi

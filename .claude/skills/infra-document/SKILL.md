@@ -53,8 +53,12 @@ follows the symlink so it works from any project on any machine):
 SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/infra-document}" 2>/dev/null)"
 GUIDELINE="$(dirname "$(dirname "$(dirname "$SK")")")"
 TPL="$GUIDELINE/knowledge/templates/infra-document-template.md"
-test -f "$TPL" && echo "template: $TPL" \
-  || echo "ERROR: template not found — is the guideline repo present and the skill symlinked? (Guide §1.1)"
+REF="$(dirname "$SK")/drawio-reference.md"   # ships next to SKILL.md; used in Phase 3
+# GUARD: stop loudly (don't just warn) if the guideline repo didn't resolve — otherwise Phase 2
+# proceeds with no template and Phase 3 with no stencil reference, silently degrading both.
+test -f "$TPL" || { echo "ERROR: doc template not found at '$TPL' (resolved from '$SK') — is /infra-document SYMLINKED from the guideline repo, not copied? (Guide §1.1)"; exit 1; }
+test -f "$REF" || { echo "ERROR: drawio-reference.md not found at '$REF' — guideline skill dir incomplete."; exit 1; }
+echo "template: $TPL"; echo "drawio ref: $REF"
 ```
 
 `Read` `$TPL` (8 sections) and fill it from Phase 1. The template is **comprehension-first** — a
@@ -87,8 +91,8 @@ reader should finish §1–§3 with a correct mental model, then use §4–§8 a
 
 ## Phase 3: Write `docs/diagrams/infra.drawio` (one combined diagram)
 
-Create `docs/diagrams/` if needed. Hand-author **one** combined diagram following
-[`drawio-reference.md`](drawio-reference.md) — the proven AWS4 stencil patterns:
+Create `docs/diagrams/` if needed. `Read` `$REF` (resolved + existence-checked in Phase 1) and
+hand-author **one** combined diagram following it — the proven AWS4 stencil patterns:
 
 - Nest groups: **AWS Cloud → Region → (Account) → VPC → public/private subnet → resources**
   (each child's geometry is relative to its parent via `parent=`).
@@ -107,12 +111,16 @@ Create `docs/diagrams/` if needed. Hand-author **one** combined diagram followin
 Validate the file is well-formed before finishing. Use a parser that does **not** resolve external
 entities or hit the network (avoids XXE / billion-laughs — drawio files need no DTD/entities):
 ```bash
-# Preferred: libxml2's xmllint (no network, no external entities)
-xmllint --nonet --noout docs/diagrams/infra.drawio && echo "drawio XML OK"
-# Fallback if xmllint is unavailable (defusedxml hardens the stdlib parser):
-python3 -c "import defusedxml.ElementTree as ET; ET.parse('docs/diagrams/infra.drawio'); print('drawio XML OK')"
+# Try xmllint (libxml2); fall back to defusedxml; if NEITHER is available, say so — don't claim OK.
+if command -v xmllint >/dev/null; then
+  xmllint --nonet --noout docs/diagrams/infra.drawio && echo "drawio XML OK (xmllint)"
+elif python3 -c "import defusedxml" 2>/dev/null; then
+  python3 -c "import defusedxml.ElementTree as ET; ET.parse('docs/diagrams/infra.drawio'); print('drawio XML OK (defusedxml)')"
+else
+  echo "WARN: cannot validate XML — install libxml2-utils (xmllint) or python3-defusedxml. Diagram written but UNVALIDATED."
+fi
 ```
-(Do not use the plain `xml.dom.minidom` / `xml.etree` stdlib parsers — they are XXE-vulnerable by default.)
+(Do not fall back to the plain `xml.dom.minidom` / `xml.etree` stdlib parsers — they are XXE-vulnerable by default.)
 
 ## Phase 3.5: Coverage check (diagram vs code)
 

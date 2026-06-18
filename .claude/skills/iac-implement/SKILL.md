@@ -209,6 +209,13 @@ Production also enforces it **server-side on every PR** (Layer 3), so nothing me
 SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/iac-implement}" 2>/dev/null)"
 GUIDELINE="$(dirname "$(dirname "$(dirname "$SK")")")"
 TPL="$GUIDELINE/knowledge/templates/iac-scan/iac-scan.yml"
+# GUARD: a copied-not-symlinked skill (or moved repo) resolves $GUIDELINE wrong → $TPL absent →
+# a raw "cp: cannot stat" with the CI gate silently never installed. Stop with a clear cause.
+test -f "$TPL" || {
+  echo "ERROR: CI template not found at '$TPL' (guideline resolved from '$SK')."
+  echo "  /iac-implement must be SYMLINKED from the guideline repo, not copied (Guide §1.1)."
+  exit 1
+}
 mkdir -p .github/workflows
 DST=.github/workflows/iac-scan.yml
 if [ ! -f "$DST" ]; then cp "$TPL" "$DST"; echo "created  $DST";
@@ -223,20 +230,28 @@ with the IaC (the user controls when). This complements the secret-scan CI gate 
 
 ## Phase 4: Validate chain (per terraform.md)
 
-Run, in order, and report each result:
+Run, in order, and report each result. **terraform is a hard dependency** — preflight it so a
+missing binary fails clearly instead of cascading `command not found` through every step:
 
 ```bash
+command -v terraform >/dev/null || { echo "ERROR: terraform not on PATH — install it before /iac-implement"; exit 1; }
 terraform fmt -recursive
 terraform init -backend=false   # validate without touching remote state
 terraform validate
-tflint --recursive --format compact --minimum-failure-severity=error || true   # errors block; warnings just print (matches CI)
-checkov -d . --quiet --soft-fail || true   # report-only (matches CI)
-trivy config . --severity HIGH,CRITICAL || true   # 2nd misconfig scanner (tfsec successor); different ruleset than checkov
+
+# Scanners: distinguish "not installed" from "ran clean" — DON'T let `|| true` mask a missing tool
+# as a pass (that gives false coverage confidence in the G3 report).
+for tool in tflint checkov trivy; do
+  command -v "$tool" >/dev/null || echo "NOTE: $tool not installed — SKIPPED locally (the CI iac-scan gate still runs it on PR)."
+done
+command -v tflint  >/dev/null && { tflint --recursive --format compact --minimum-failure-severity=error || true; }  # errors block; warnings just print (matches CI)
+command -v checkov >/dev/null && { checkov -d . --quiet --soft-fail || true; }   # report-only (matches CI)
+command -v trivy   >/dev/null && { trivy config . --severity HIGH,CRITICAL || true; }   # 2nd misconfig scanner; different ruleset than checkov
 ```
 
 Run **both** Checkov and Trivy — their rulesets differ, so each catches misconfigs the other misses
-(this is the production norm). Report counts from each. If `trivy` isn't installed, note it and
-continue (the CI gate below runs it regardless).
+(this is the production norm). Report counts from each, and **report any tool that was SKIPPED as
+"not run" — never as clean** (the CI gate below runs them all regardless).
 
 Then, only if the user confirms backend/credentials are ready:
 
