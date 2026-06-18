@@ -113,9 +113,9 @@ detection, generates `CLAUDE.md` + `.mcp.json`, and copies the relevant skills/a
 First, load the module library:
 
 ```
-/add-dir /home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure
-# (optional) reference env:
-/add-dir /home/lg-vietnam007/Desktop/Lion_Graden/clinic_online/new-clinic-infrastructure/environments/tokyo-dev
+/add-dir $TF_MODULE_LIB                  # the custom-infrastructure clone set in pipeline-usage-guide §1.3
+# (optional) reference env to mirror composition style:
+/add-dir <path-to-a-reference-env>       # e.g. an env under $TF_MODULE_LIB/environments/
 ```
 
 The skill reads/generates `MODULES.md` (catalog of 36 modules), maps spec → **reusable** modules

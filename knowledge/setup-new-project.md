@@ -13,22 +13,32 @@ This skill **bootstraps Claude Code Core for a new project** — auto-detects th
 
 The skill lives in the `claude-code-guideline` repo. To make it available from any project on your machine, symlink it into your user-level skills directory. The same applies to the other **pipeline skills** (`spec-architect`, `iac-implement`, `infra-review`, `infra-document`, `secret-scan`) — they are cross-project personal tools, so symlink them too (especially `spec-architect`, which runs **before** a project's `.claude/` even exists):
 
+> ⚠️ This symlinks **from** the guideline repo — it must already be **cloned** (and these paths assume
+> where). Set `GUIDE` to your clone. This is only the symlink step; the full new-machine setup (clone
+> both repos, install CLIs/runtimes, set `TF_MODULE_LIB`, verify) is [`pipeline-usage-guide.md`](pipeline-usage-guide.md) §1.0–§1.5.
+
 ```bash
-mkdir -p ~/.claude/skills ~/.claude/workflows
+GUIDE=~/Documents/Devops/claude-code-guideline   # <-- set to wherever YOU cloned the guideline repo
+mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
 for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
-  ln -sfn ~/Documents/Devops/claude-code-guideline/.claude/skills/$s \
-          ~/.claude/skills/$s
+  ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
 # /infra-review runs this from ~/.claude/workflows/ (machine-independent path)
-for wf in ~/Documents/Devops/claude-code-guideline/.claude/workflows/*.js; do
+for wf in "$GUIDE"/.claude/workflows/*.js; do
   ln -sfn "$wf" ~/.claude/workflows/"$(basename "$wf")"
+done
+# reviewer agents the infra-review workflow calls — user-level so it works in any project
+for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+  ln -sfn "$GUIDE/.claude/agents/$a.md" ~/.claude/agents/$a.md
 done
 ```
 
-Verify:
+Verify (each must resolve — catches dangling symlinks from a wrong `GUIDE`):
 
 ```bash
-ls -la ~/.claude/skills/{init-project,spec-architect,iac-implement,infra-review,infra-document,secret-scan}/SKILL.md
+for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+  readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok $s" || echo "DANGLING $s — fix GUIDE/clone"
+done
 ```
 
 > These six form the DevOps pipeline `/spec-architect → /init-project → /iac-implement →

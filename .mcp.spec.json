@@ -9,16 +9,16 @@
       "command": "uvx",
       "args": ["awslabs.well-architected-security-mcp-server@latest"],
       "env": {
-        "AWS_PROFILE": "phamvanthanh-claude-mcp-pham-thanh",
-        "AWS_REGION": "ap-northeast-1"
+        "AWS_PROFILE": "<your-aws-profile>",
+        "AWS_REGION": "<your-aws-region>"
       }
     },
     "aws-pricing": {
       "command": "uvx",
       "args": ["awslabs.aws-pricing-mcp-server@latest"],
       "env": {
-        "AWS_PROFILE": "phamvanthanh-claude-mcp-pham-thanh",
-        "AWS_REGION": "ap-northeast-1"
+        "AWS_PROFILE": "<your-aws-profile>",
+        "AWS_REGION": "us-east-1"
       }
     }
   }

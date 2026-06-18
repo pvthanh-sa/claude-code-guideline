@@ -46,31 +46,87 @@ Receive request → /spec-architect → /init-project → /iac-implement → /in
 
 ## 1. One-time setup
 
-Do this **once per machine**. Skip if already done.
+Do this **once per machine**, **in order**. Skip a sub-step only if already done.
 
-### 1.1 Symlink the pipeline skills + workflow
+> ⚠️ **On a brand-new machine, §1.1 alone is NOT enough** — it only creates symlinks. Those symlinks
+> point at the guideline repo, which must already be **cloned** (§1.0), and the pipeline also needs the
+> module library cloned (§1.3) plus a set of CLIs/runtimes installed (§1.0). Skipping §1.0 makes §1.1
+> create *dangling* symlinks silently (`ln` doesn't check the target exists), so commands appear under
+> `/` but every skill dies later with "must be symlinked". Run §1.0 → §1.5 top to bottom, then §1.5
+> verifies the whole thing before you start.
 
-The 6 pipeline skills **and** the `infra-review` workflow are personal, cross-project tools →
-symlink them into `~/.claude/` so they're available from every project (and auto-update on
-`git pull` of the guideline repo). Putting the workflow at `~/.claude/workflows/` gives it a
-**machine-independent path** — the `/infra-review` skill runs it from there, so nothing needs editing
-on a new machine (just re-run this block):
+### 1.0 Prerequisites — clone the repos + install the tools
+
+**(a) Clone both repos.** §1.1/§1.3/§1.4 below assume these exact paths — clone here, or set the
+`GUIDE` / `TF_MODULE_LIB` variables to wherever you cloned and the commands still work:
 
 ```bash
-mkdir -p ~/.claude/skills ~/.claude/workflows
+git clone <guideline-repo-url>        ~/Documents/Devops/claude-code-guideline           # this repo
+git clone <custom-infrastructure-url> ~/Documents/Devops/terraforms/custom-infrastructure # the Terraform module library (SEPARATE repo, lives outside this one)
+```
+
+**(b) Install the CLIs/runtimes the pipeline shells out to.** Missing ones fail at different stages —
+some loudly (terraform, scanners), some **silently** (MCP servers just don't start). Install all up front:
+
+| Tool | Needed by | Install |
+| ---- | --------- | ------- |
+| `terraform` | Stage 3 validate/plan (hard-fails if absent) | [terraform install](https://developer.hashicorp.com/terraform/install) |
+| `aws` CLI | Stage 1/3/4 (creds, plan backend, Access Analyzer) | `awscli` |
+| `uv`/`uvx` | **most AWS MCP servers** (spec data, pricing, live reads) — silent fail without it | `curl -LsSf https://astral.sh/uv/install.sh \| sh && uv python install 3.10` |
+| `docker` | terraform/github MCP + betterleaks Docker fallback | [docker install](https://docs.docker.com/engine/install/) |
+| `node`/`npx` | grafana/ansible MCP (only if used) | nvm / distro pkg |
+| `tflint` `checkov` `trivy` | Stage 3 local IaC scan (else SKIPPED, reported "not run") | see [`security-scans-cli.md`](security-scans-cli.md) §0 |
+| `betterleaks` (or `gitleaks`) | Stage 6 secret scan (hard-fails at G6 if none) | `brew install betterleaks` / binary / `docker pull ghcr.io/betterleaks/betterleaks:latest` |
+| `xmllint` or `python3-defusedxml` | Stage 5 diagram XML validation (else "UNVALIDATED" warn) | `apt install libxml2-utils` |
+
+(§1.5 below verifies all of these in one command.)
+
+### 1.1 Symlink the pipeline skills + workflow + reviewer agents
+
+The 6 pipeline skills, the `infra-review` workflow, **and the reviewer agents it calls** are personal,
+cross-project tools → symlink them into `~/.claude/` so they're available from every project (and
+auto-update on `git pull`). Set `GUIDE` to your clone path (from §1.0) — the whole block uses it:
+
+```bash
+GUIDE=~/Documents/Devops/claude-code-guideline   # <-- set to wherever YOU cloned the guideline repo
+test -d "$GUIDE/.claude/skills" || { echo "STOP: $GUIDE/.claude/skills not found — fix GUIDE / clone §1.0 first"; }
+
+mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
 
 # Skills
 for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
-  ln -sfn ~/Documents/Devops/claude-code-guideline/.claude/skills/$s ~/.claude/skills/$s
+  ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
 
 # Workflow(s) used by /infra-review
-for wf in ~/Documents/Devops/claude-code-guideline/.claude/workflows/*.js; do
+for wf in "$GUIDE"/.claude/workflows/*.js; do
   ln -sfn "$wf" ~/.claude/workflows/"$(basename "$wf")"
+done
+
+# Reviewer agents the infra-review workflow invokes (security-auditor / infra-reviewer / cost-optimizer /
+# incident-responder). /init-project also copies these per-project, but symlinking them user-level lets
+# /infra-review work in ANY project (incl. ones where init wasn't run), and matches the skills above.
+for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+  ln -sfn "$GUIDE/.claude/agents/$a.md" ~/.claude/agents/$a.md
+done
+
+# Sanity: no dangling symlinks (each must resolve to a real file)
+for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+  readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok  $s" || echo "DANGLING $s — check GUIDE / clone"
 done
 ```
 
 **Restart Claude Code**, type `/` — you should see all 6 commands.
+
+> **Why symlink matters for file resolution:** each skill reaches back into the guideline repo for
+> the files it needs at runtime — templates (`iac-scan.yml`, `secret-scan/`, `infra-document-template.md`),
+> the MCP catalog (`.mcp.guideline-only.json`), `drawio-reference.md`. It finds them by following its
+> **own symlink** (`readlink -f`) back to the repo, so **no path needs configuring for these** — the
+> symlink in §1.1 is enough, wherever the repo is cloned. If a skill is *copied* instead of symlinked,
+> that back-reference breaks and the skill now **stops with a clear error** telling you to symlink it.
+> The **one** path you must set yourself is `TF_MODULE_LIB` (§1.3) — it points outside the guideline
+> repo (to your `custom-infrastructure`), so it can't be auto-resolved; the Stage 1/3 skills hard-error
+> if it's unset.
 
 > **Symlink vs copy:** symlinks track the guideline repo, so `git pull` updates skills + workflow
 > everywhere with no edits. Want a frozen copy that doesn't auto-update? swap `ln -sfn` for `cp`
@@ -107,10 +163,13 @@ shopt -q login_shell && echo "LOGIN shell → use ~/.bash_profile" || echo "non-
 
 ```bash
 RC=~/.bash_profile   # or ~/.bashrc — whichever Step 1 printed
+# Point this at YOUR custom-infrastructure clone from §1.0 (it's a SEPARATE repo, outside the guideline repo):
 echo 'export TF_MODULE_LIB="$HOME/Documents/Devops/terraforms/custom-infrastructure"' >> "$RC"
 source "$RC"
 echo "$TF_MODULE_LIB"                       # this session
 bash -il -c 'echo "[$TF_MODULE_LIB]"'       # what a brand-new login terminal will see
+# VERIFY the var points at a real cloned library — setting the var alone is not enough:
+test -d "$TF_MODULE_LIB/modules" && echo "OK: module library present" || echo "MISSING: clone custom-infrastructure to \$TF_MODULE_LIB (§1.0) — the var is set but the dir/modules/ is absent"
 ```
 
 > **Bulletproof alternative:** keep the export in `~/.bashrc` and make `~/.bash_profile` source it —
@@ -128,10 +187,14 @@ the `--mcp-config` flag — _not_ installed globally, so they don't burn tokens 
 Once — copy the template and fill in profile/region:
 
 ```bash
-cp ~/Documents/Devops/claude-code-guideline/.mcp.spec.json ~/.claude/spec-mcp.json
+cp "${GUIDE:-$HOME/Documents/Devops/claude-code-guideline}/.mcp.spec.json" ~/.claude/spec-mcp.json
+grep -n '<your-' ~/.claude/spec-mcp.json   # shows exactly what to fill (fails to find = file didn't copy → wrong GUIDE path)
 # edit <your-aws-profile> → your read-only profile (see aws-iam-mcp-setup.md)
-#      <your-aws-region>  → e.g. ap-northeast-1   (aws-pricing is always us-east-1, leave as is)
+#      <your-aws-region>  → e.g. ap-northeast-1   (aws-pricing is pinned to us-east-1, leave as is)
 ```
+
+> This is a **copy**, not a symlink (it needs your profile filled in). If the template ever changes,
+> re-run the `cp` to refresh — then re-fill the placeholders.
 
 Then **each time** you build a spec, launch Claude Code with this flag (see Step 1):
 
@@ -146,18 +209,47 @@ claude --mcp-config ~/.claude/spec-mcp.json
 - ℹ️ `aws-knowledge` is HTTP and needs no AWS creds; `well-architected`/`aws-pricing` need a profile.
   Spec still works without MCP — you just lose real pricing/Well-Architected data.
 
+### 1.5 Verify your setup (the "doctor")
+
+One copy-paste block that checks every precondition **before** you start the pipeline, so a missing
+piece surfaces now (PASS/FAIL per line) instead of mid-pipeline:
+
+```bash
+GUIDE=~/Documents/Devops/claude-code-guideline   # your guideline clone (from §1.0)
+echo "== skills/workflow/agents resolve (catches dangling symlinks) =="
+for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+  readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok  skill $s" || echo "FAIL skill $s"
+done
+readlink -f ~/.claude/workflows/infra-review.js >/dev/null 2>&1 && echo "ok  workflow infra-review" || echo "FAIL workflow infra-review"
+for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+  readlink -f ~/.claude/agents/$a.md >/dev/null 2>&1 && echo "ok  agent $a" || echo "FAIL agent $a"
+done
+echo "== module library =="
+test -d "$TF_MODULE_LIB/modules" && echo "ok  TF_MODULE_LIB ($TF_MODULE_LIB)" || echo "FAIL TF_MODULE_LIB unset or no modules/ — clone custom-infra (§1.0/§1.3)"
+echo "== CLIs / runtimes =="
+for t in terraform aws uvx docker tflint checkov trivy; do command -v $t >/dev/null && echo "ok  $t" || echo "FAIL $t (see §1.0)"; done
+command -v betterleaks >/dev/null || command -v gitleaks >/dev/null && echo "ok  secret scanner" || echo "FAIL no betterleaks/gitleaks (§1.0)"
+command -v xmllint >/dev/null || python3 -c 'import defusedxml' 2>/dev/null && echo "ok  xml validator" || echo "warn no xmllint/defusedxml (Stage 5 diagram stays unvalidated)"
+echo "== spec MCP config =="
+test -f ~/.claude/spec-mcp.json && { grep -q '<your-' ~/.claude/spec-mcp.json && echo "FAIL spec-mcp.json still has <your-> placeholders to fill (§1.4)" || echo "ok  spec-mcp.json filled"; } || echo "FAIL spec-mcp.json missing (§1.4)"
+echo "== AWS creds (read-only MCP profile) =="
+aws sts get-caller-identity >/dev/null 2>&1 && echo "ok  aws creds resolve" || echo "warn aws creds not resolving (Stage 1 pricing/WA + Stage 3 plan need them) — see aws-iam-mcp-setup.md"
+```
+
+All `ok`? You're ready for Stage 1. Any `FAIL` points at the section to fix.
+
 ---
 
 ## 2. Overview: 6 steps + 6 gates
 
-| #   | Command                       | You receive                             | Gate   | You decide                         | Next command                                    |
-| --- | ----------------------------- | --------------------------------------- | ------ | ---------------------------------- | ----------------------------------------------- |
-| 1   | `/spec-architect <name>`      | `docs/specs/<name>.spec.md`             | **G1** | Spec right?                        | create folder → `/init-project`                 |
-| 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
-| 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
-| 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md` | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
+| #   | Command                       | You receive                                             | Gate   | You decide                         | Next command                                    |
+| --- | ----------------------------- | ------------------------------------------------------- | ------ | ---------------------------------- | ----------------------------------------------- |
+| 1   | `/spec-architect <name>`      | `docs/specs/<name>.spec.md`                             | **G1** | Spec right?                        | create folder → `/init-project`                 |
+| 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`                    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
+| 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`                       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
+| 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md`          | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
 | 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` + `README.md` | **G5** | doc accurate? diagram correct?     | export PNG, delete Mermaid, commit              |
-| 6   | `/secret-scan`                | scan result + guardrail (hook + CI)     | **G6** | clean? real leak to rotate?        | `git push` (hook + CI re-scan)                  |
+| 6   | `/secret-scan`                | scan result + guardrail (hook + CI)                     | **G6** | clean? real leak to rotate?        | `git push` (hook + CI re-scan)                  |
 
 **Safety invariant:** `.claude/settings.json` (**copied** into the project by `/init-project` if the
 project has none — not generated per-stack) hard-denies `terraform destroy` and
@@ -344,6 +436,7 @@ CLAUDE.md          (tracked — shareable project guidance)
 .claude/settings.json
 .mcp.json          (gitignored — contains placeholders)
 ```
+
 > `/init-project` adds **`.claude/` and `.mcp.json` to `.gitignore`** — the repo may be **public**, and
 > the `.claude/` tooling is internal + regenerated per machine via `/init-project` (`--sync` to refresh).
 > Only `CLAUDE.md` is tracked. (Private team repo? Remove `.claude/` from `.gitignore` to share it.)
@@ -381,13 +474,16 @@ directory per convention, and stop at `terraform plan` for you to review.
 ### 1. Load the module library into the session
 
 ```
-/add-dir /home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure
+/add-dir $TF_MODULE_LIB
 ```
+
+(this is the `custom-infrastructure` clone you set in §1.3 — the skill resolves the library from
+`$TF_MODULE_LIB`, so use the same value here rather than a hardcoded path.)
 
 (Optional) also load a sample env so Claude can mirror the composition style:
 
 ```
-/add-dir /home/lg-vietnam007/Desktop/Lion_Graden/clinic_online/new-clinic-infrastructure/environments/tokyo-dev
+/add-dir <path-to-a-reference-env>   # OPTIONAL: any existing env dir (e.g. one under $TF_MODULE_LIB/environments/) to mirror the composition style; the tokyo-dev convention is also documented in rules/terraform.md
 ```
 
 ### 2. Run the command
@@ -396,7 +492,8 @@ directory per convention, and stop at `terraform plan` for you to review.
 /iac-implement docs/specs/care-hub.spec.md environments/dev-care-hub
 ```
 
-- Arg 1 = spec path · Arg 2 = the env directory to create.
+- Arg 1 = spec path · Arg 2 = the env directory to create. (The module library is resolved from
+  `$TF_MODULE_LIB` + the `/add-dir` in step 1 — it is **not** an argument to the command.)
 
 ### 3. What Claude does (and you see)
 
@@ -662,23 +759,31 @@ The pipeline focuses on _building_. After `apply`, other skills/agents support o
 ## 12. Command cheat-sheet
 
 ```bash
-# --- One-time setup ---
-mkdir -p ~/.claude/skills ~/.claude/workflows
+# --- One-time setup (full sequence: §1.0 clone+install → §1.1 symlink → §1.3 var → §1.4 spec MCP → §1.5 verify) ---
+GUIDE=~/Documents/Devops/claude-code-guideline   # set to YOUR clone of the guideline repo (§1.0)
+# git clone <guideline-url> "$GUIDE"; git clone <custom-infra-url> ~/Documents/Devops/terraforms/custom-infrastructure
+# install: terraform aws uv/uvx docker node tflint checkov trivy betterleaks(or gitleaks)  (see §1.0)
+mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
 for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
-  ln -sfn ~/Documents/Devops/claude-code-guideline/.claude/skills/$s ~/.claude/skills/$s
+  ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
-for wf in ~/Documents/Devops/claude-code-guideline/.claude/workflows/*.js; do
+for wf in "$GUIDE"/.claude/workflows/*.js; do
   ln -sfn "$wf" ~/.claude/workflows/"$(basename "$wf")"          # /infra-review reads ~/.claude/workflows/
 done
+for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+  ln -sfn "$GUIDE/.claude/agents/$a.md" ~/.claude/agents/$a.md   # reviewer agents for /infra-review
+done
+echo 'export TF_MODULE_LIB="$HOME/Documents/Devops/terraforms/custom-infrastructure"' >> ~/.bash_profile && source ~/.bash_profile
+# then run the §1.5 "doctor" block to verify everything resolves before starting
 
 # --- Spec step: open a session with ephemeral MCP (not global) ---
-cp ~/Documents/Devops/claude-code-guideline/.mcp.spec.json ~/.claude/spec-mcp.json  # once, fill profile
+cp "$GUIDE/.mcp.spec.json" ~/.claude/spec-mcp.json         # once; then fill <your-*> placeholders
 claude --mcp-config ~/.claude/spec-mcp.json                # spec session with advisory MCP
 /spec-architect care-hub                                   # G1: build spec
 #   → create folder, copy spec, cd, claude (NO flag — ephemeral MCP is gone)
 /init-project                                              # G2: bootstrap
 #   → fill .mcp.json, review CLAUDE.md, /exit && claude, commit
-/add-dir /home/lg-vietnam007/Documents/Devops/terraforms/custom-infrastructure
+/add-dir $TF_MODULE_LIB
 /iac-implement docs/specs/care-hub.spec.md environments/dev-care-hub   # G3: terraform plan
 terraform apply tfplan                                     # you press it
 /infra-review environments/dev-care-hub                    # G4: parallel review (add --deep = loop-until-dry)
@@ -726,20 +831,20 @@ terraform apply tfplan                                     # you press it
 
 ## 14. Troubleshooting
 
-| Symptom                                                | Cause / Fix                                                                                                                                                                                                                                                        |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/spec-architect` doesn't appear                       | Not symlinked or not restarted. Check `ls -la ~/.claude/skills/spec-architect/SKILL.md`, then restart.                                                                                                                                                             |
-| `/init-project` gives a generic result                 | Forgot to copy the spec into `docs/specs/` **before** running, or the folder is empty. Copy the spec and re-run.                                                                                                                                                   |
-| `/init-project` doesn't create `.mcp.json`             | `.mcp.json` already exists → the skill skips Phase 5 (by design). Delete it to regenerate.                                                                                                                                                                         |
-| `/iac-implement` reports "library NOT LOADED"          | You haven't `/add-dir`'d the custom-infrastructure folder. Add it and re-run.                                                                                                                                                                                      |
-| `MODULES.md` doesn't show a new module                 | Delete `MODULES.md` at the library root and re-run `/iac-implement` to regenerate.                                                                                                                                                                                 |
-| No MCP at the spec step (pricing/well-architected)     | Forgot to launch the session with the flag. Exit and reopen: `claude --mcp-config ~/.claude/spec-mcp.json` (see §1.4). Spec works without MCP — you just lose real data.                                                                                           |
-| MCP pricing/well-architected unresponsive              | IAM user not set up ([`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md)) or wrong profile in `~/.claude/spec-mcp.json` / `.mcp.json`.                                                                                                                                  |
-| `/workflows` shows no 3 agents                         | Workflow tool unavailable in the session → the `infra-review` skill falls back to running the 3 agents sequentially.                                                                                                                                               |
+| Symptom                                                               | Cause / Fix                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/spec-architect` doesn't appear                                      | Not symlinked or not restarted. Check `ls -la ~/.claude/skills/spec-architect/SKILL.md`, then restart.                                                                                                                                                                                    |
+| `/init-project` gives a generic result                                | Forgot to copy the spec into `docs/specs/` **before** running, or the folder is empty. Copy the spec and re-run.                                                                                                                                                                          |
+| `/init-project` doesn't create `.mcp.json`                            | `.mcp.json` already exists → the skill skips Phase 5 (by design). Delete it to regenerate.                                                                                                                                                                                                |
+| `/iac-implement` reports "library NOT LOADED"                         | You haven't `/add-dir`'d the custom-infrastructure folder. Add it and re-run.                                                                                                                                                                                                             |
+| `MODULES.md` doesn't show a new module                                | Delete `MODULES.md` at the library root and re-run `/iac-implement` to regenerate.                                                                                                                                                                                                        |
+| No MCP at the spec step (pricing/well-architected)                    | Forgot to launch the session with the flag. Exit and reopen: `claude --mcp-config ~/.claude/spec-mcp.json` (see §1.4). Spec works without MCP — you just lose real data.                                                                                                                  |
+| MCP pricing/well-architected unresponsive                             | IAM user not set up ([`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md)) or wrong profile in `~/.claude/spec-mcp.json` / `.mcp.json`.                                                                                                                                                         |
+| `/workflows` shows no 3 agents                                        | Workflow tool unavailable in the session → the `infra-review` skill falls back to running the 3 agents sequentially.                                                                                                                                                                      |
 | `Workflow "infra-review" not found` (only deep-research, code-review) | The workflow isn't at `~/.claude/workflows/`. Run the one-time setup (§1.1) to symlink it there — the skill runs it from `~/.claude/workflows/infra-review.js` (machine-independent, via `scriptPath`). Fallbacks: resolve via the symlinked skill dir, or run the 3 agents sequentially. |
-| Claude tries to `terraform apply`                      | Doesn't happen by design; `settings.json` also denies `apply -auto-approve`. If you see it, stop and report.                                                                                                                                                       |
-| Deny list (destroy/apply block) missing in the project | `/init-project` only **copies** `settings.json` when the project **has none**; if a different one already exists it's not overwritten. Open `.claude/settings.json` and merge in the deny list from the guideline repo. `--sync` also **doesn't** touch this file. |
-| `terraform init` backend error                         | S3 backend not created / wrong profile. Create the state bucket + fix `backend.tf`, or validate with `init -backend=false` first.                                                                                                                                  |
+| Claude tries to `terraform apply`                                     | Doesn't happen by design; `settings.json` also denies `apply -auto-approve`. If you see it, stop and report.                                                                                                                                                                              |
+| Deny list (destroy/apply block) missing in the project                | `/init-project` only **copies** `settings.json` when the project **has none**; if a different one already exists it's not overwritten. Open `.claude/settings.json` and merge in the deny list from the guideline repo. `--sync` also **doesn't** touch this file.                        |
+| `terraform init` backend error                                        | S3 backend not created / wrong profile. Create the state bucket + fix `backend.tf`, or validate with `init -backend=false` first.                                                                                                                                                         |
 
 ---
 
