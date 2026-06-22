@@ -2,7 +2,7 @@
 
 Read-only, metadata-only IAM policy for a dedicated MCP user (access key + secret key, no MFA).
 
-**Scope:** AI agent inspects infrastructure metadata only. No data reads (no SQL, no S3 object content, no DynamoDB items, no Bedrock invocations). CloudWatch log content is the one exception — required for the observability use case.
+**Scope:** AI agent inspects infrastructure metadata only. No data reads (no SQL, no S3 object content, no DynamoDB items, no Bedrock invocations). CloudWatch log content is the one exception — required for the observability use case. Public catalog APIs that expose **no account data** are in scope too — notably the AWS **Pricing** price list (`pricing:*` is read-only), used by the spec-stage cost estimate.
 
 ---
 
@@ -132,6 +132,9 @@ Save as `iam/claude-mcp-boundary.json`. Use it as **both** the permission bounda
         "ce:Describe*",
         "budgets:View*",
         "budgets:Describe*",
+        "pricing:Get*",
+        "pricing:Describe*",
+        "pricing:List*",
         "tag:Get*",
         "resource-groups:Get*",
         "resource-groups:List*",
@@ -343,6 +346,7 @@ aws sts get-caller-identity --profile $P
 aws cloudwatch list-metrics --profile $P --max-items 5
 aws ecs list-clusters --profile $P
 aws lambda list-functions --profile $P --max-items 5
+aws pricing describe-services --region us-east-1 --profile $P --max-items 1   # aws-pricing MCP (public price list, read-only)
 
 # Must fail with AccessDenied
 aws iam create-user --user-name x --profile $P
