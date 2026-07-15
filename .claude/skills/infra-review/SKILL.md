@@ -1,9 +1,9 @@
 ---
 name: infra-review
-description: 'Stage 4 of the DevOps pipeline. Run a parallel security + infra-best-practice + cost review of a Terraform environment via the infra-review Workflow, save the report to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go report, and STOP at human gate G4. Never edits code or applies without explicit approval.'
+description: 'Stage 4 of the DevOps pipeline. Run a parallel security + infra-best-practice + cost review of a Terraform environment via the infra-review Workflow, save the report to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go report — baseline-aware on re-reviews, labeling each finding RESOLVED/NEW/STILL-OPEN vs the prior report — and STOP at human gate G4. Never edits code or applies without explicit approval.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Workflow
-argument-hint: '[target-dir] [--deep]'
+argument-hint: '[target-dir] [--deep] [--baseline <prior-report> | --no-baseline] [--note "<what changed>"]'
 ---
 
 # Infra Review — Stage 4 (Review gate)
@@ -23,6 +23,45 @@ re-runs the finders for several rounds and stops only after 2 consecutive rounds
 (deduped) findings. Use it for higher recall (a single AI pass is **not exhaustive** — see the note
 at the end). Default (no flag) = one pass.
 
+**Baseline — iterative reviews (RESOLVED / NEW / STILL-OPEN).** `/infra-review` audits the FULL code
+every run (full-scan is the point — it catches regressions in files you didn't touch, like
+`checkov`/`trivy`; there is **no delta-skip**). What it adds across iterations is a **label layer**:
+pass the prior report as a baseline and synthesis tags each finding **RESOLVED** (was in the prior
+report, gone now), **STILL-OPEN** (in both), or **NEW** (first seen this run) — so a re-review reads as
+*"last run's High is resolved, no regression, only X + Y new"* instead of re-printing the whole wall.
+
+- **Auto-detect the baseline** before running — the most recent existing report for this env (skip if
+  none → that's the first run):
+  ```bash
+  ENV="$(basename '<target-dir>')"
+  BASELINE="$(ls -1 docs/reviews/${ENV}-*.md 2>/dev/null | sort | tail -1)"
+  echo "${BASELINE:-<none — first review>}"
+  ```
+  Pass `args.baseline = "$BASELINE"` when non-empty. `--no-baseline` forces a clean review (no labels);
+  an explicit `--baseline <path>` overrides the auto-detected one. The baseline feeds **only** the
+  synthesis agent — the finders never see it, so coverage is identical with or without it.
+- **`--note "<what changed>"`** — when you re-review after editing the IaC, pass a one-line note of
+  *what* you changed. It is recorded in the report (`changeNote` + a lead line in the summary) **and**
+  handed to the finders as a focus hint — they still **full-scan**, just pay extra attention to that
+  change and its blast radius. Use it so the report captures the *intent* of the change, not only the
+  findings delta (baseline alone sees which findings changed, not what code you touched). If the
+  operator typed `--note "<text>"` (or said it in chat at invocation), parse it out and pass `args.note`.
+
+**Cadence (which mode when):**
+
+| Situation | How to run |
+| --- | --- |
+| First review of an env, or a periodic deep audit | `--deep` (loop-until-dry); no baseline yet |
+| Re-review after applying fixes / a confirmation pass | **single-pass + baseline** (auto-detected) — fast, shows what the fixes resolved + any regression |
+| Suspect the last pass missed something | `--deep` again (baseline still applies if one exists) |
+
+> **Make a finding stop recurring — the spec is the memory.** Baseline marks a *defect* STILL-OPEN
+> every run until it's fixed. If it's a **conscious accepted risk** (not a defect to fix), record it in
+> the project **spec's "Accepted risks" section** (`docs/specs/*.spec.md`): the finders read it and tag
+> the finding `acceptedRisk: true`, so it drops out of the go/no-go counts (still listed for
+> re-validation). Rule of thumb — **baseline = "what changed since last run"; spec Accepted-risks =
+> "what we chose to live with."** Use both.
+
 ---
 
 ## Phase 1: Run the parallel review Workflow
@@ -40,7 +79,7 @@ test -f "$WF" && echo "workflow: $WF" \
 Then call the `Workflow` tool with:
 - `scriptPath`: the resolved `$WF` (you may also try `name: "infra-review"` if your Claude Code
   discovers user-level workflows; `scriptPath` always works)
-- `args`: `{ "path": "<target-dir>", "deep": <true if --deep was passed, else false> }`
+- `args`: `{ "path": "<target-dir>", "deep": <true if --deep, else false>, "baseline": "<auto-detected prior report — see the Baseline section above; omit/empty on a first or --no-baseline run>", "note": "<--note text if the operator gave one, else omit>" }`
 
 It fans out three reviewers concurrently — `security-auditor`, `infra-reviewer`,
 `cost-optimizer` — and synthesizes their findings into one structured report
@@ -74,7 +113,9 @@ echo "$REPORT"
 ```
 
 Write the full report (the block below, including the `Saved:` line) to `$REPORT` — overwrite on a
-same-day re-run — then show the same content in chat.
+same-day re-run — then show the same content in chat. When the report carries `changeSinceBaseline`
+(a baseline was used), render the **Change since last review** line + the **Resolved** list, and tag
+each finding with its `status` (`[NEW]` / `[STILL-OPEN]`); omit all three when no baseline was used.
 
 ```
 ## Infrastructure Review Report (G4) — <target-dir>
@@ -85,10 +126,16 @@ _Saved: docs/reviews/<env>-<date>.md_
 
 ### Severity:  Critical X · High Y · Medium Z · Low W
 ### Security coverage (Well-Architected Security Pillar): IAM a · Detective b · Infra-protection c · Data-protection d · Incident-response e
+### Changes this round (only when `--note` was given): <what the operator changed — from changeNote>
+### Change since last review (only when a baseline was used): N resolved · K new · M still-open — regression: yes/no
 ### Estimated savings: ~$N/month
 
 ### Must fix before apply (Critical/High):
-1. [severity][source][wa-category] title — location → remediation
+1. [severity][source][wa-category][NEW|STILL-OPEN] title — location → remediation
+...
+
+### Resolved since last review (only with a baseline — from changeSinceBaseline.resolved):
+- [severity] title — location  ✓ no longer found
 ...
 
 ### Top cost-saving recommendations:
@@ -109,8 +156,12 @@ End by asking the human to decide — do not act yet:
 ```
 
 Wait for the human's choice. When they pick fixes, make the edits in the working tree (the
-PostToolUse hook formats `.tf`), re-run the relevant validate step, and present the diff —
-still without `terraform apply` or committing.
+PostToolUse hook formats `.tf`), then **re-run the affected GATE — not just `terraform validate`**:
+if the fix touched a scanner suppression or a scanned resource, re-run `trivy config` / `checkov`; if
+it touched IAM, re-run Access Analyzer. A finding's *premise can be wrong* (e.g. it claims "no
+matching resource" for a rule that does fire, or recommends dropping a suppression that's actually
+load-bearing) — **verify the claim against the real tool output before applying its remediation**, and
+confirm the gate is green afterward. Present the diff — still without `terraform apply` or committing.
 
 > **Hand-off:** once the review is accepted (and any fixes applied), continue **in the same
 > session** with Stage 5: `/infra-document <target-dir>`. It will read the saved

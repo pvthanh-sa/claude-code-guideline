@@ -1,6 +1,6 @@
 export const meta = {
   name: 'infra-review',
-  description: 'Parallel security + infra-best-practice + cost review of a Terraform environment, synthesized into one severity-ranked go/no-go report. Stage 4 of the DevOps pipeline. Pass args.deep=true for loop-until-dry (higher recall: re-runs finders until 2 consecutive rounds find nothing new).',
+  description: 'Parallel security + infra-best-practice + cost review of a Terraform environment, synthesized into one severity-ranked go/no-go report. Stage 4 of the DevOps pipeline. Pass args.deep=true for loop-until-dry (higher recall: re-runs finders until 2 consecutive rounds find nothing new). Pass args.baseline=<path to the prior report> to label each finding RESOLVED / NEW / STILL-OPEN vs the last review — finders STILL full-scan every run (catches regressions in unchanged files); only synthesis is baseline-aware (no delta-skip). Pass args.note="<what changed>" to record an operator change-note in the report and focus the finders on that change (they still full-scan).',
   phases: [
     { title: 'Review', detail: 'security-auditor + infra-reviewer (looped until dry when deep) + cost-optimizer' },
     { title: 'Synthesize', detail: 'merge + dedupe + rank by severity, recommend go/no-go' },
@@ -19,6 +19,17 @@ const target = (_a && _a.path) || '.'
 const DEEP = !!(_a && _a.deep)
 const MAX_ROUNDS = DEEP ? 5 : 1 // cap deep cost; 2 consecutive dry rounds also stop it
 const DRY_STOP = 2
+// Optional path to the previous report. Finders ignore it (they ALWAYS full-scan); ONLY synthesis
+// reads it — to label findings RESOLVED / NEW / STILL-OPEN. No delta-skip: unchanged files are still audited.
+const BASELINE = (_a && typeof _a.baseline === 'string' && _a.baseline.trim()) ? _a.baseline.trim() : ''
+// Optional free-text note of what the operator changed this round. Recorded in the report AND given to
+// the finders as a FOCUS hint — they still full-scan (the note never narrows coverage, only adds attention).
+const NOTE = (_a && typeof _a.note === 'string' && _a.note.trim()) ? _a.note.trim() : ''
+const noteFocus = NOTE
+  ? ` The operator says they just changed: "${NOTE}". Still audit the FULL configuration as above — do ` +
+    `NOT narrow scope — but pay particular attention to that change and its blast radius (what it touches, ` +
+    `what could regress because of it).`
+  : ''
 
 // ---- Preflight: refuse to review a target with no Terraform in it --------------
 // Scripts have no fs access, so a tiny agent checks. Guards against the silent
@@ -98,6 +109,31 @@ const COST = {
   },
 }
 
+// Prior-report shape (read by a small agent when a baseline path is passed). Parsed from the
+// previous docs/reviews/<env>-<date>.md, NOT from the current code.
+const BASELINE_SCHEMA = {
+  type: 'object',
+  required: ['found'],
+  properties: {
+    found: { type: 'boolean' },
+    baselineDate: { type: 'string' },
+    priorRecommendation: { type: 'string' },
+    priorFindings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['severity', 'title', 'location'],
+        properties: {
+          severity: { type: 'string' },
+          title: { type: 'string' },
+          location: { type: 'string' },
+          acceptedRisk: { type: 'boolean' },
+        },
+      },
+    },
+  },
+}
+
 const REPORT = {
   type: 'object',
   required: ['recommendation', 'summary', 'topFindings'],
@@ -127,6 +163,8 @@ const REPORT = {
             type: 'string',
             enum: ['iam', 'detective-controls', 'infrastructure-protection', 'data-protection', 'incident-response'],
           },
+          // Set ONLY when a baseline was provided: 'still-open' = also in the prior report; 'new' = first seen this run.
+          status: { type: 'string', enum: ['new', 'still-open'] },
         },
       },
     },
@@ -140,6 +178,27 @@ const REPORT = {
         iam: { type: 'number' }, 'detective-controls': { type: 'number' },
         'infrastructure-protection': { type: 'number' }, 'data-protection': { type: 'number' },
         'incident-response': { type: 'number' },
+      },
+    },
+    // Free-text echo of what the operator said they changed this round (from args.note); omitted if none.
+    changeNote: { type: 'string' },
+    // Populated ONLY when a baseline report was provided: the diff vs the last review.
+    changeSinceBaseline: {
+      type: 'object',
+      properties: {
+        baselineDate: { type: 'string' },
+        resolvedCount: { type: 'number' },
+        newCount: { type: 'number' },
+        stillOpenCount: { type: 'number' },
+        resolved: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              severity: { type: 'string' }, title: { type: 'string' }, location: { type: 'string' },
+            },
+          },
+        },
       },
     },
   },
@@ -165,7 +224,8 @@ const secPrompt = (round) =>
   `e.g. CloudTrail, Config, flow logs) | infrastructure-protection (network/SG/WAF/boundaries) | ` +
   `data-protection (encryption, secrets, key mgmt) | incident-response (recoverability, alarms, runbooks).` +
   acceptedRiskNote +
-  (round > 1 ? ` This is review ROUND ${round}: surface only LESS-obvious issues not caught earlier — edge cases, cross-cutting and second-order risks.` : '')
+  (round > 1 ? ` This is review ROUND ${round}: surface only LESS-obvious issues not caught earlier — edge cases, cross-cutting and second-order risks.` : '') +
+  noteFocus
 
 const infraPrompt = (round) =>
   `You are reviewing the Terraform infrastructure under "${target}" for best practices: naming ` +
@@ -173,13 +233,15 @@ const infraPrompt = (round) =>
   `validation, provider pinning, for_each vs count, lifecycle, AND wasted resources (oversized ` +
   `instances, redundant NAT, missing lifecycle policies). Report every finding with severity and file:line.` +
   acceptedRiskNote +
-  (round > 1 ? ` This is review ROUND ${round}: surface only issues not already obvious — subtle or cross-module ones.` : '')
+  (round > 1 ? ` This is review ROUND ${round}: surface only issues not already obvious — subtle or cross-module ones.` : '') +
+  noteFocus
 
 const costPrompt =
   `You are analyzing the Terraform infrastructure under "${target}" for cost optimization. ` +
   `Inspect instance classes, NAT strategy, desired counts/autoscaling, log retention, storage ` +
   `tiers/lifecycle, caching, and reserved-capacity opportunities. Give concrete actions with ` +
-  `estimated monthly savings (USD) and risk.`
+  `estimated monthly savings (USD) and risk.` +
+  noteFocus
 
 // ---- Phase 1: review (single pass, or loop-until-dry when deep) ----------------
 const seen = new Set()
@@ -251,6 +313,41 @@ if (incomplete.size) {
     mustFixBeforeApply: [`Restore missing reviewer agent(s): ${which}, then re-run /infra-review`],
   }
 }
+// Baseline-aware labeling: read the prior report (if one was passed) so synthesis can mark each
+// finding RESOLVED / NEW / STILL-OPEN. The finders above always full-scan — this only adds labels.
+let baseline = null
+if (BASELINE) {
+  baseline = await agent(
+    `Read the prior infra-review report file at "${BASELINE}". If it does not exist or can't be read, ` +
+    `return {"found": false}. If it exists, return found:true, baselineDate (from the filename or the ` +
+    `report's header/date), priorRecommendation, and priorFindings: every finding it lists (top findings, ` +
+    `must-fix, AND accepted-risks) as {severity,title,location,acceptedRisk}. Only PARSE the report file — ` +
+    `do NOT inspect the current Terraform.`,
+    { label: 'baseline', model: 'haiku', phase: 'Synthesize', schema: BASELINE_SCHEMA }
+  )
+  if (baseline && baseline.found) {
+    log(`baseline: ${(baseline.priorFindings || []).length} prior finding(s)${baseline.baselineDate ? ' from ' + baseline.baselineDate : ''}`)
+  } else {
+    log(`baseline '${BASELINE}' not found/empty — proceeding without change labels`)
+    baseline = null
+  }
+}
+const baselineNote = baseline
+  ? `\n\nBASELINE — prior report${baseline.baselineDate ? ' (' + baseline.baselineDate + ')' : ''} findings:\n` +
+    `${JSON.stringify(baseline.priorFindings || [])}\n` +
+    `Diff the CURRENT findings against this baseline (match by title + location SEMANTICALLY, not exact ` +
+    `string; severity may have shifted). For each current finding set "status": "still-open" if it matches a ` +
+    `baseline finding, else "new". Put baseline findings with NO current match into "changeSinceBaseline.resolved" ` +
+    `and fill baselineDate + resolvedCount/newCount/stillOpenCount. LEAD the summary with the change framing — ` +
+    `e.g. "vs baseline ${baseline.baselineDate || 'prior run'}: N resolved, K new, M still-open; regression: yes/no" ` +
+    `— so the reader sees what CHANGED, not a fresh wall of findings. (Full-scan still ran, so a STILL-OPEN that ` +
+    `was supposedly fixed, or a NEW one in an untouched file, is a real regression — call it out.)`
+  : ''
+const noteNote = NOTE
+  ? `\n\nOPERATOR CHANGE NOTE (this round): "${NOTE}". Set "changeNote" to it verbatim and OPEN the ` +
+    `summary with one line stating what the operator changed + whether the review found any issue ` +
+    `introduced by it.`
+  : ''
 const report = await agent(
   `Merge this review of "${target}" into ONE report. Findings are already deduped; rank by ` +
   `severity, count by severity, sum estimated monthly savings from COST, and give a go/no-go ` +
@@ -263,7 +360,7 @@ const report = await agent(
   `and carry over each security finding's "waCategory". Also tally security findings per ` +
   `Well-Architected Security category into waSecurityCounts so the human sees coverage across the pillar.\n\n` +
   `FINDINGS (security+infra, deduped over ${DEEP ? 'multiple rounds' : '1 round'}):\n${JSON.stringify(findings)}\n\n` +
-  `COST:\n${JSON.stringify(cost)}`,
+  `COST:\n${JSON.stringify(cost)}` + baselineNote + noteNote,
   { label: 'synthesize', phase: 'Synthesize', schema: REPORT },
 )
 
