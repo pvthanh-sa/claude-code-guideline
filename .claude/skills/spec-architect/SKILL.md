@@ -73,6 +73,16 @@ Design to the project rules: least-privilege IAM, encryption at rest + in transi
 SGs, no public SSH, secrets in Secrets Manager/SSM (`.claude/rules/security.md`), and AWS-primary
 + Terraform defaults (`.claude/CLAUDE.md`).
 
+> **Mandatory security default — CloudFront origin mTLS.** Whenever the design has **CloudFront in
+> front of an origin you control** (ALB / custom origin), you MUST lock the origin to the
+> distribution with **origin mTLS** — CloudFront presents a client certificate the origin verifies.
+> A CloudFront **prefix list or a shared-secret header alone is NOT sufficient**: the origin-facing
+> CloudFront IP ranges are shared across all AWS accounts, so anyone can point their own distribution
+> at the origin and pass. Capture it in §5 (Security) and §8 (modules: `cloudfront` with
+> `origin_client_certificate_arn` + an ALB listener running `mutual_authentication mode=verify` and a
+> trust store). Exceptions: **S3 origins → OAC**; **in-VPC origins → prefer VPC origins/PrivateLink**.
+> Do not silently omit this — if the user declines it, record the residual risk explicitly in §9.
+
 ## Phase 3: Map to reusable modules (optional but recommended)
 
 If the custom module library is available — i.e. the user has `/add-dir`'d the module library

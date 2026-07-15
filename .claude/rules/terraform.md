@@ -29,7 +29,8 @@ globs:
 - Dual-region pattern: default region + `us-east-1` alias for CloudFront/ACM
 
 ## State Management
-- Always use S3 backend with `use_lockfile = true`
+- Always use S3 backend with `use_lockfile = true` and `encrypt = true`
+- Keep `backend.tf` to STATIC fields only (`key`, `use_lockfile`, `encrypt`); put account-specific values (`bucket`, `region`, `profile`) in a gitignored `backend-<env>.hcl` partial config (gitignore rule `backend-*.hcl`), loaded via `terraform init -backend-config=backend-<env>.hcl`
 - Separate state file per environment (`key = "<env>/terraform.tfstate"`)
 - Never use local state for production or shared environments
 

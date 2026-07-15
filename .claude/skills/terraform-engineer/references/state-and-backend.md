@@ -3,22 +3,31 @@
 ## S3 Backend Configuration
 
 ### Standard Backend Pattern
+Split static vs account-specific: `backend.tf` (committed) holds only static fields;
+account-specific values live in a gitignored `backend-<env>.hcl` partial config
+(gitignore pattern `backend-*.hcl`), loaded with `terraform init -backend-config=backend-<env>.hcl`.
 ```hcl
+# backend.tf (committed)
 terraform {
   backend "s3" {
-    bucket       = "<project>-tfstate-storage"
-    region       = "ap-northeast-1"
     key          = "<environment>/terraform.tfstate"
-    profile      = "<aws-profile-with-mfa>"
     use_lockfile = true
+    encrypt      = true
   }
 }
+```
+```hcl
+# backend-<env>.hcl (gitignored)
+bucket  = "<project>-tfstate-storage"
+region  = "ap-northeast-1"
+profile = "<aws-profile-with-mfa>"
 ```
 
 ### Key Principles
 - **One state file per environment** — separate `key` paths (e.g., `tokyo-dev/terraform.tfstate`, `tokyo-staging/terraform.tfstate`)
 - **Always enable locking** — use `use_lockfile = true` (native S3 locking, no DynamoDB needed for Terraform >= 1.10)
 - **Legacy locking** — for Terraform < 1.10, use `dynamodb_table` for state locking
+- **Encrypt + keep account-specific out of git** — set `encrypt = true`; put `bucket`/`region`/`profile` in a gitignored `backend-*.hcl` (not in committed `backend.tf`)
 - **Profile-based auth** — use MFA-protected AWS profiles via `shared_credentials_files`
 - **Never use local state** for production or shared environments
 

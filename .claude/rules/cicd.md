@@ -38,7 +38,11 @@ globs:
 - Group by: `ci-${{ github.ref }}` for CI, `deploy-${{ environment }}` for CD
 
 ## Security
-- Pin action versions explicitly (e.g., `actions/checkout@v4`)
+- Pin action versions. A version tag (`actions/checkout@v4`) is the **minimum** (dev/lab repos); for
+  **production-facing repos, pin third-party actions to a full commit SHA** (with a `# v4` trailing
+  comment) and enable Dependabot for `github-actions` — a tag is mutable, so SHA-pinning is the real
+  supply-chain control (aligns with `security.md`). Reviewers: treat tag-pinning in a disposable lab
+  as an accepted choice, not a finding.
 - Never expose secrets in logs or echo statements
 - Use `secrets.AWS_ACCOUNT_ID` — never hardcode account IDs
 - Set `permissions: id-token: write, contents: read` for OIDC

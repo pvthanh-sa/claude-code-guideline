@@ -378,7 +378,7 @@ script; the gate must exist *before* that happens):
 {
   grep -qxF ".mcp.json" .gitignore 2>/dev/null || echo ".mcp.json"
   grep -qxF ".claude/"  .gitignore 2>/dev/null || echo ".claude/"
-  for p in "certs/" "*.pem" "*.key" ".terraform/" "*.tfstate" "*.tfstate.*"; do
+  for p in "certs/" "*.pem" "*.key" ".terraform/" "*.tfstate" "*.tfstate.*" "backend-*.hcl"; do
     grep -qxF "$p" .gitignore 2>/dev/null || echo "$p"
   done
 } >> .gitignore 2>/dev/null

@@ -4,11 +4,13 @@ Read-only, metadata-only IAM policy for a dedicated MCP user (access key + secre
 
 **Scope:** AI agent inspects infrastructure metadata only. No data reads (no SQL, no S3 object content, no DynamoDB items, no Bedrock invocations). CloudWatch log content is the one exception — required for the observability use case. Public catalog APIs that expose **no account data** are in scope too — notably the AWS **Pricing** price list (`pricing:*` is read-only), used by the spec-stage cost estimate.
 
+> **Region note (why a second Allow):** these global/billing read APIs (`pricing`, `ce`, `budgets`) live in a **separate region-unconditional** statement `AllowGlobalBillingReadOnly`. The Pricing API has endpoints only in `us-east-1` / `ap-south-1` / `eu-central-1`, and the aws-pricing MCP resolves `ap-southeast-1` queries to the nearest endpoint **`ap-south-1`** — so keeping `pricing` under the `aws:RequestedRegion` lock (`ap-southeast-1`/`us-east-1`) denies it (`pricing:GetProducts` → AccessDenied). Region-scoped services stay in `AllowReadOnlyMetadata`.
+
 ---
 
 ## Policy
 
-Save as `iam/claude-mcp-boundary.json`. Use it as **both** the permission boundary and the user policy (or split into two — same Allow block, the Deny block belongs in the boundary).
+Save as `iam/claude-mcp-boundary.json`. Use it as **both** the permission boundary and the user policy (or split into two — the same Allow statements, the Deny block belongs in the boundary).
 
 ```json
 {
@@ -127,14 +129,6 @@ Save as `iam/claude-mcp-boundary.json`. Use it as **both** the permission bounda
         "config:Select*",
         "support:Describe*",
         "trustedadvisor:Describe*",
-        "ce:Get*",
-        "ce:List*",
-        "ce:Describe*",
-        "budgets:View*",
-        "budgets:Describe*",
-        "pricing:Get*",
-        "pricing:Describe*",
-        "pricing:List*",
         "tag:Get*",
         "resource-groups:Get*",
         "resource-groups:List*",
@@ -146,6 +140,24 @@ Save as `iam/claude-mcp-boundary.json`. Use it as **both** the permission bounda
         "StringEquals": {
           "aws:RequestedRegion": ["ap-southeast-1", "us-east-1"]
         }
+      }
+    },
+    {
+      "Sid": "AllowGlobalBillingReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "pricing:Get*",
+        "pricing:Describe*",
+        "pricing:List*",
+        "ce:Get*",
+        "ce:List*",
+        "ce:Describe*",
+        "budgets:View*",
+        "budgets:Describe*"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" }
       }
     },
     {
@@ -347,6 +359,7 @@ aws cloudwatch list-metrics --profile $P --max-items 5
 aws ecs list-clusters --profile $P
 aws lambda list-functions --profile $P --max-items 5
 aws pricing describe-services --region us-east-1 --profile $P --max-items 1   # aws-pricing MCP (public price list, read-only)
+aws pricing get-products --service-code AmazonRDS --region ap-south-1 --profile $P --max-items 1   # the region the MCP actually hits — must work region-free
 
 # Must fail with AccessDenied
 aws iam create-user --user-name x --profile $P

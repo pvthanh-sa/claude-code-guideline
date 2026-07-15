@@ -78,16 +78,23 @@ environments/<env-name>/
 ## Key Patterns
 
 ### S3 Backend
+`backend.tf` holds only STATIC fields; account-specific values go in a gitignored
+`backend-<env>.hcl` (init with `terraform init -backend-config=backend-<env>.hcl`).
 ```hcl
+# backend.tf (committed)
 terraform {
   backend "s3" {
-    bucket       = "<project>-tfstate-storage"
-    region       = "ap-northeast-1"
     key          = "<env>/terraform.tfstate"
-    profile      = "<aws-profile>"
     use_lockfile = true
+    encrypt      = true
   }
 }
+```
+```hcl
+# backend-<env>.hcl (gitignored — pattern: backend-*.hcl)
+bucket  = "<project>-tfstate-storage"
+region  = "ap-northeast-1"
+profile = "<aws-profile-with-mfa>"
 ```
 
 ### Provider (Dual-Region)
