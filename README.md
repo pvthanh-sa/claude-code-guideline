@@ -60,7 +60,8 @@ gate at every step** — Claude never auto-advances and never runs `terraform ap
 - **Stage 4 — `/infra-review`**: a parallel **Workflow** runs `security-auditor` + `infra-reviewer`
   + `cost-optimizer`, synthesized into one severity-ranked go/no-go report.
 - **Stage 5 — `/infra-document`**: generate a living `docs/infrastructure.md` + an AWS-grouped
-  `docs/diagrams/infra.drawio` (with a Mermaid block to verify), derived from the as-built Terraform.
+  `docs/diagrams/infra.drawio` (stencil/geometry validator gate) + an auto-exported, vision-checked
+  `infra.png`, derived from the as-built Terraform.
 - **Stage 6 — `/secret-scan`**: tool-based secret gate before `git push` — installs a Betterleaks/
   Gitleaks pre-push hook + CI workflow and scans on demand (defense-in-depth, Layer 2 + 3).
 

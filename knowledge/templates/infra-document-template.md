@@ -2,8 +2,9 @@
   Infrastructure Document Template (living doc)
   Produced/refreshed by /infra-document (Stage 5). Derive every fact from the spec + Terraform
   code; mark anything unknown as TODO — do not invent. Re-run the skill when infra changes.
-  Diagram upkeep: open diagrams/infra.drawio → Export PNG → diagrams/infra.png → then delete the
-  Mermaid verification block in §2.
+  Diagram: diagrams/infra.png is auto-exported (and vision-checked) by the skill. The Mermaid
+  verification block in §2 appears ONLY when auto-export failed on this machine — in that case:
+  open diagrams/infra.drawio → Export PNG → diagrams/infra.png → delete the Mermaid block.
 -->
 
 # Infrastructure — <project> / <environment>
@@ -22,7 +23,8 @@
 ## 2. Architecture diagram
 
 ![Infrastructure](diagrams/infra.png)
-<!-- ^ PNG not exported yet. Source: diagrams/infra.drawio (open in draw.io → Export → PNG). -->
+<!-- ^ Auto-exported from diagrams/infra.drawio (validated + vision-checked). If auto-export
+     failed, this is a placeholder — see the FALLBACK Mermaid block below. -->
 
 **How to read this diagram:** <1–2 lines — nested boxes = grouping (AWS Cloud → Region → VPC →
 public/private subnet); solid **numbered** arrows ① ② ③ = the main path in order; dashed arrows =
@@ -32,7 +34,8 @@ networking purple, database blue, storage green, security red).>
 **The numbered path:** <one compact line decoding the ① ② ③ edges in order — e.g. ① Client → CloudFront
 → ② ALB → ③ ECS → ④ Aurora; dashed = creds/logs. This is the diagram's key; §3 explains the *why*.>
 
-<!-- VERIFICATION DIAGRAM — delete after confirming infra.drawio matches, then export drawio → infra.png -->
+<!-- FALLBACK VERIFICATION DIAGRAM — emitted ONLY when PNG auto-export failed on this machine.
+     Delete after confirming infra.drawio matches and exporting drawio → infra.png manually. -->
 ```mermaid
 flowchart LR
   user([Client])

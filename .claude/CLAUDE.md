@@ -64,7 +64,7 @@ Each stage is a discrete skill that **STOPS at an approval gate** — never auto
 - **G2** — approve `CLAUDE.md` + fill `.mcp.json` before writing IaC
 - **G3** — approve `terraform plan` BEFORE `apply` (never auto-apply)
 - **G4** — approve the review report (security + infra + cost) → go / fix / no-go
-- **G5** — approve `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (living doc)
+- **G5** — approve `docs/infrastructure.md` + `docs/diagrams/infra.drawio` + auto-exported `infra.png` (living doc)
 - **G6** — secret scan clean before `git push` (Betterleaks/Gitleaks tool gate)
 
 The human is the driver; Claude is the co-pilot. No stage runs `terraform apply`, `git push`, or commits.

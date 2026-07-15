@@ -13,6 +13,9 @@ patterns; only change `id`, `value`, `parent`, and `mxGeometry`.
 4. **Escape** `&` as `&amp;`, `<` as `&lt;`, newlines in labels as `&#xa;`.
 5. **Sizes:** resource icons `78×78`; groups sized to contain children with ~40px padding.
 6. Keep ids human-readable (`vpc`, `ecs_api`, `aurora`) so edges are easy to wire.
+7. **Only names in `aws4-stencils.json` (same dir) render.** `validate-drawio.py` enforces this —
+   an unknown `resIcon`/`grIcon` draws a **blank glyph with no error**. When a service has no
+   catalog entry, use the labeled fallback box (§Special shapes); the validator always allows it.
 
 ## Group containers
 Same style string for every group — only `grIcon`, colors, and `value` change. Keep the long
@@ -27,11 +30,18 @@ points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0
 | AWS Cloud | `mxgraph.aws4.group_aws_cloud_alt` | `#232F3E` | 0 |
 | Region | `mxgraph.aws4.group_region` | `#147EBA` | 1 |
 | Account | `mxgraph.aws4.group_account` | `#CD2264` or `#1E88E5` | 0 |
-| VPC | `mxgraph.aws4.group_vpc` | `#248814` | 0 |
-| Public subnet | `mxgraph.aws4.group_public_subnet` | `#248814` | 0 |
-| Private subnet | `mxgraph.aws4.group_private_subnet` | `#147EBA` | 0 |
+| VPC | `mxgraph.aws4.group_vpc` (official 2025 sidebar: `group_vpc2` + `#8C4FFF`) | `#248814` | 0 |
 | Security group | `mxgraph.aws4.group_security_group` | `#DD3522` | 1 |
 | Auto Scaling group | `mxgraph.aws4.group_auto_scaling_group` | `#ED7100` | 1 |
+
+**Subnets — there is NO `group_public_subnet` / `group_private_subnet` stencil** (they render a
+blank corner). The official draw.io sidebar reuses `group_security_group` with `grStroke=0` and a
+tinted fill. Use these exact suffixes (same `points=[...]` prefix as above):
+
+```
+Public subnet:  shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;grStroke=0;strokeColor=#7AA116;fillColor=#F2F6E8;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;
+Private subnet: shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;grStroke=0;strokeColor=#00A4A6;fillColor=#E6F6F7;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=0;
+```
 
 ## Resource icons
 One style string; change only `resIcon` and `fillColor`. Label goes in `value` (use `&#xa;` for line breaks).
@@ -50,26 +60,48 @@ sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1
 | Application Load Balancer | `mxgraph.aws4.application_load_balancer` | `#8C4FFF` | Networking purple |
 | CloudFront | `mxgraph.aws4.cloudfront` | `#8C4FFF` | Networking purple |
 | API Gateway | `mxgraph.aws4.api_gateway` | `#E7157B` | App-integration pink |
-| VPC / NAT / IGW | `mxgraph.aws4.virtual_private_cloud_vpc` | `#8C4FFF` | Networking purple |
+| VPC (icon) | `mxgraph.aws4.vpc` | `#8C4FFF` | Networking purple |
+| NAT / Internet gateway | `mxgraph.aws4.nat_gateway` / `mxgraph.aws4.internet_gateway` | `#8C4FFF` | Networking purple |
 | Route 53 | `mxgraph.aws4.route_53` | `#8C4FFF` | Networking purple |
 | RDS / Aurora | `mxgraph.aws4.rds` (Aurora: `mxgraph.aws4.aurora`) | `#2E27AD` | Database blue |
 | DynamoDB | `mxgraph.aws4.dynamodb` | `#2E27AD` | Database blue |
 | ElastiCache | `mxgraph.aws4.elasticache` | `#C925D1` | Database magenta |
 | S3 | `mxgraph.aws4.s3` | `#7AA116` | Storage green |
-| ECR | `mxgraph.aws4.elastic_container_registry` | `#ED7100` | Compute orange |
+| ECR | `mxgraph.aws4.ecr` | `#ED7100` | Compute orange |
 | CloudWatch | `mxgraph.aws4.cloudwatch_2` | `#E7157B` | Mgmt pink |
 | Secrets Manager | `mxgraph.aws4.secrets_manager` | `#DD344C` | Security red |
 | KMS | `mxgraph.aws4.key_management_service` | `#DD344C` | Security red |
 | WAF | `mxgraph.aws4.waf` | `#DD344C` | Security red |
-| SNS | `mxgraph.aws4.simple_notification_service` | `#E7157B` | App-integration pink |
-| SQS | `mxgraph.aws4.simple_queue_service` | `#E7157B` | App-integration pink |
+| SNS | `mxgraph.aws4.sns` | `#E7157B` | App-integration pink |
+| SQS | `mxgraph.aws4.sqs` | `#E7157B` | App-integration pink |
 
 ### Special shapes
-- **IAM role:** `shape=mxgraph.aws4.role;resIcon=mxgraph.aws4.identity_and_access_management_iam;fillColor=#DD344C`
+- **IAM:** `resIcon=mxgraph.aws4.identity_and_access_management` (NOT `…_iam` — that name doesn't
+  exist and renders blank); a role can also use the dedicated stencil `shape=mxgraph.aws4.role`.
 - **User/actor:** `shape=mxgraph.aws4.user;fillColor=#232F3E` (size `60×78`)
-- If unsure of an exact `resIcon` name, fall back to a labeled generic resource box rather than
-  guessing — a wrong stencil name renders as an empty box. A clean fallback:
+- If unsure of an exact `resIcon` name, grep **`aws4-stencils.json`** or fall back to a labeled
+  generic resource box rather than guessing — a wrong stencil name renders as an empty box
+  (`validate-drawio.py` flags unknown names and suggests the closest match). A clean fallback:
   `rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#232F3E;fontColor=#232F3E`.
+
+## Gotchas (silent-rendering mistakes)
+- **Unknown stencil = blank glyph, no error.** Verified empirically: an invalid `resIcon` renders
+  a flat colored square; an invalid `grIcon` renders a border with no corner icon. The validator +
+  the catalog exist because of this.
+- **`strokeColor` on resource icons stays `#ffffff`** exactly as in the style template — other
+  values can make the white glyph invisible against the fill.
+- **Name variants are not interchangeable** — `group_vpc` and `group_vpc2` both exist (different
+  corner art), but `group_public_subnet`, `identity_and_access_management_iam`,
+  `simple_notification_service`, `simple_queue_service`, `elastic_container_registry`,
+  `virtual_private_cloud_vpc` do NOT exist (use: subnet style above, `identity_and_access_management`,
+  `sns`, `sqs`, `ecr`, `vpc`). Don't guess `_2`/`_alt` variants — check the catalog.
+- **Catalog-valid can still render wrong** — `authenticated_user` passes the validator but draws a
+  solid dark square (no glyph) with the standard resourceIcon style (found live, 2026-07 Cognito
+  lab). For human/actor nodes use `user` / `users`. Only the Phase-3.7 vision check catches this
+  class; when it flags a blank icon, swap the stencil rather than fighting the style.
+- **Edges that exit an icon's bottom-center slice through its own label** (labels render below the
+  icon). Exit from a side (`exitX=0/1`) or a corner and route around; watch label collisions in
+  shared corridors — give long dashed edges explicit waypoints + a label offset.
 
 ## Edges (connections)
 ```

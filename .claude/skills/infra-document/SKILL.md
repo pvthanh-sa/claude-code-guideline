@@ -1,8 +1,8 @@
 ---
 name: infra-document
-description: 'Stage 5 of the DevOps pipeline. Generate a living infrastructure document for an environment — derives the architecture from the actual Terraform module wiring + spec, writes docs/infrastructure.md, an editable docs/diagrams/infra.drawio (AWS-grouped), a temporary Mermaid block for verification, and a top-level README.md entry point. STOPS at human gate G5; never commits.'
+description: 'Stage 5 of the DevOps pipeline. Generate a living infrastructure document for an environment — derives the architecture from the actual Terraform module wiring + spec, writes docs/infrastructure.md, an editable docs/diagrams/infra.drawio (AWS-grouped) gated by a shipped stencil/geometry validator, auto-exports docs/diagrams/infra.png (drawio CLI) and vision-checks the render (Mermaid mirror only as fallback when export is impossible), plus a top-level README.md entry point. STOPS at human gate G5; never commits.'
 disable-model-invocation: true
-allowed-tools: Read, Glob, Grep, Bash, Write
+allowed-tools: Read, Glob, Grep, Bash, Write, Edit
 argument-hint: '[env-dir]'
 ---
 
@@ -20,8 +20,11 @@ doc and diagram stay accurate (derived from code, not hand-maintained).
 
 **Outputs (in the project):**
 - `docs/infrastructure.md` — the document (template: `knowledge/templates/infra-document-template.md`)
-- `docs/diagrams/infra.drawio` — editable source diagram (one combined AWS-grouped diagram)
-- A temporary **Mermaid** block inside `infrastructure.md` for cross-checking the `.drawio`
+- `docs/diagrams/infra.drawio` — editable source diagram (one combined AWS-grouped diagram),
+  gated by the shipped `validate-drawio.py` (stencil catalog + geometry + edge lints)
+- `docs/diagrams/infra.png` — auto-exported render (drawio CLI, Phase 3.7) that Claude
+  vision-checks; **only if export is impossible** on this machine: a temporary **Mermaid**
+  fallback block inside `infrastructure.md` + manual-export instructions instead
 - `README.md` — top-level repo entry point (Phase 4.5; created or refreshed, never clobbered)
 
 ---
@@ -53,12 +56,18 @@ follows the symlink so it works from any project on any machine):
 SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/infra-document}" 2>/dev/null)"
 GUIDELINE="$(dirname "$(dirname "$(dirname "$SK")")")"
 TPL="$GUIDELINE/knowledge/templates/infra-document-template.md"
-REF="$(dirname "$SK")/drawio-reference.md"   # ships next to SKILL.md; used in Phase 3
+REF="$SK/drawio-reference.md"        # ships next to SKILL.md; used in Phase 3
+VALIDATOR="$SK/validate-drawio.py"   # Phase 3 deterministic gate
+CATALOG="$SK/aws4-stencils.json"     # allowlist of valid mxgraph.aws4.* names
+EXPORTER="$SK/export-diagram.sh"     # Phase 3.7 PNG export (headless-safe)
 # GUARD: stop loudly (don't just warn) if the guideline repo didn't resolve — otherwise Phase 2
 # proceeds with no template and Phase 3 with no stencil reference, silently degrading both.
 test -f "$TPL" || { echo "ERROR: doc template not found at '$TPL' (resolved from '$SK') — is /infra-document SYMLINKED from the guideline repo, not copied? (Guide §1.1)"; exit 1; }
 test -f "$REF" || { echo "ERROR: drawio-reference.md not found at '$REF' — guideline skill dir incomplete."; exit 1; }
-echo "template: $TPL"; echo "drawio ref: $REF"
+test -f "$VALIDATOR" || { echo "ERROR: validate-drawio.py not found at '$VALIDATOR' — guideline skill dir incomplete (git pull the guideline repo?)"; exit 1; }
+test -f "$CATALOG"   || { echo "ERROR: aws4-stencils.json not found at '$CATALOG' — guideline skill dir incomplete."; exit 1; }
+test -f "$EXPORTER"  || { echo "ERROR: export-diagram.sh not found at '$EXPORTER' — guideline skill dir incomplete."; exit 1; }
+echo "template: $TPL"; echo "drawio ref: $REF"; echo "validator: $VALIDATOR"; echo "exporter: $EXPORTER"
 ```
 
 `Read` `$TPL` (8 sections) and fill it from Phase 1. The template is **comprehension-first** — a
@@ -67,8 +76,9 @@ reader should finish §1–§3 with a correct mental model, then use §4–§8 a
 - **§1 Overview** — include the **"big picture"** paragraph: what enters, what happens, what comes
   out, and the 2–4 main building blocks, in **plain language with no resource names/jargon**. A
   newcomer reads only this and gets the gist.
-- **§2** holds the diagram (PNG ref + temporary Mermaid, see Phase 4), a **"How to read this
-  diagram"** line (shapes/colors/numbered edges — see Phase 3), and a one-line **numbered-path key**
+- **§2** holds the diagram (PNG ref; a temporary Mermaid block appears **only** when PNG export
+  failed — see Phase 4), a **"How to read this diagram"** line (shapes/colors/numbered edges — see
+  Phase 3), and a one-line **numbered-path key**
   (`① → ② → ③ …`) that decodes the diagram's edges. There is **no separate data-flow section** — that
   key plus the §3 walkthrough (which references the same numbers) covers it.
 - **§3 How it works (architecture walkthrough)** — the section that makes the infra *click*. This is
@@ -91,7 +101,7 @@ reader should finish §1–§3 with a correct mental model, then use §4–§8 a
 
 ## Phase 3: Write `docs/diagrams/infra.drawio` (one combined diagram)
 
-Create `docs/diagrams/` if needed. `Read` `$REF` (resolved + existence-checked in Phase 1) and
+Create `docs/diagrams/` if needed. `Read` `$REF` (resolved + existence-checked in Phase 2) and
 hand-author **one** combined diagram following it — the proven AWS4 stencil patterns:
 
 - Nest groups: **AWS Cloud → Region → (Account) → VPC → public/private subnet → resources**
@@ -102,25 +112,28 @@ hand-author **one** combined diagram following it — the proven AWS4 stencil pa
   dash metadata/IAM edges. Add a title and a legend.
 - Map every component from Phase 1 to exactly one node; wire edges from the Terraform output→input
   relationships you found in `main.tf`.
-- If unsure of an exact `resIcon` name, use the labeled fallback box (reference §Special shapes)
-  rather than a wrong stencil that renders empty.
+- If unsure of an exact `resIcon` name, check **`aws4-stencils.json`** (the allowlist the
+  validator enforces — grep it) or use the labeled fallback box (reference §Special shapes)
+  rather than a wrong stencil that renders as a blank glyph.
 - **Write the matching "How to read this diagram" line into §2** of `infrastructure.md` — explain
   the conventions you actually used (nesting, numbered solid vs dashed edges, category colors) so a
   reader can decode the picture without guessing. The diagram and this legend must agree.
 
-Validate the file is well-formed before finishing. Use a parser that does **not** resolve external
-entities or hit the network (avoids XXE / billion-laughs — drawio files need no DTD/entities):
+Then run the **deterministic gate** — same fix-and-re-run loop as checkov/trivy in Stage 3:
+
 ```bash
-# Try xmllint (libxml2); fall back to defusedxml; if NEITHER is available, say so — don't claim OK.
-if command -v xmllint >/dev/null; then
-  xmllint --nonet --noout docs/diagrams/infra.drawio && echo "drawio XML OK (xmllint)"
-elif python3 -c "import defusedxml" 2>/dev/null; then
-  python3 -c "import defusedxml.ElementTree as ET; ET.parse('docs/diagrams/infra.drawio'); print('drawio XML OK (defusedxml)')"
-else
-  echo "WARN: cannot validate XML — install libxml2-utils (xmllint) or python3-defusedxml. Diagram written but UNVALIDATED."
-fi
+python3 "$VALIDATOR" docs/diagrams/infra.drawio --catalog "$CATALOG"
 ```
-(Do not fall back to the plain `xml.dom.minidom` / `xml.etree` stdlib parsers — they are XXE-vulnerable by default.)
+
+- Exit **0** = pass (address WARNs where reasonable). Exit **1** = findings: **fix every ERROR it
+  prints and re-run** — unknown stencil names (they render as a BLANK glyph with no error, the
+  silent failure this gate exists for), sibling overlaps, children outside their parent container,
+  dangling edges. Cap at 5 fix-and-re-run attempts; if still failing, STOP and report the residual
+  errors — never proceed with a failing diagram.
+- Exit **2** = tooling problem (file/catalog missing) — report it honestly; do not claim the
+  diagram is validated.
+- XML safety is built in: the validator prefers `defusedxml` and otherwise uses a hardened parser
+  that rejects `<!DOCTYPE`/`<!ENTITY` (XXE / billion-laughs guard). No xmllint needed.
 
 ## Phase 3.5: Coverage check (diagram vs code)
 
@@ -135,11 +148,47 @@ For every module found, verify there's a matching node + components row. **Flag 
 from the diagram** and add it — or note why it's intentionally omitted (e.g. a pure IAM/role module).
 This catches "drew it but forgot X" before the human reviews at G5.
 
-## Phase 4: Mermaid verification block (temporary)
+## Phase 3.7: Export PNG + vision self-check
 
-Inside `infrastructure.md` §2, emit the **same** topology as a Mermaid `flowchart` so the human can
-cross-check the `.drawio` without opening draw.io (guards against a malformed/incorrect diagram).
-Wrap it with clear delete markers and a PNG placeholder:
+Render the validated diagram to the artifact the doc references (and the blog pipeline consumes):
+
+```bash
+bash "$EXPORTER" docs/diagrams/infra.drawio docs/diagrams/infra.png
+```
+
+**Exporter exit 0** → `Read` the exported PNG (you can see it) and check it against the Phase 1
+component list:
+- every icon renders a real glyph — a flat colored square with **no symbol** = wrong stencil name;
+- no clipped or colliding labels (edge labels overlapping node labels is the common failure);
+- every edge visually attaches to its intended nodes; containers labeled and nested correctly;
+- the picture matches the architecture — nothing missing, nothing invented.
+
+On any issue: `Edit` the XML → re-run the validator → re-export → re-`Read`. Max **3 rounds**; if
+issues remain after that, keep the best PNG and list the residual visual issues in the G5 summary.
+(If the PNG is too large to inspect comfortably, re-export at scale 1:
+`bash "$EXPORTER" docs/diagrams/infra.drawio docs/diagrams/infra.png 1`.)
+
+**Exporter exit 1 or 2** (no drawio CLI / every attempt failed) → record the printed reason and
+take the **fallback path** in Phase 4 (manual-export instructions + Mermaid mirror). Never fake or
+skip the PNG silently.
+
+## Phase 4: Diagram reference in §2 (Mermaid = fallback only)
+
+**Export succeeded (default):** §2 references the real render — **no Mermaid block**:
+
+```markdown
+## 2. Architecture diagram
+
+![Infrastructure](diagrams/infra.png)
+<!-- Auto-exported from diagrams/infra.drawio (validated + vision-checked). Re-run /infra-document after infra changes. -->
+```
+
+Keep the "How to read this diagram" line and the numbered-path key (Phase 3) — those stay regardless.
+
+**Export failed (fallback):** state why export failed (one line, the exporter's message), then emit
+the **same** topology as a Mermaid `flowchart` so the human can cross-check the `.drawio` without
+opening draw.io (guards against a malformed/incorrect diagram). Wrap it with clear delete markers
+and a PNG placeholder:
 
 ````markdown
 ## 2. Architecture diagram
@@ -162,7 +211,9 @@ flowchart LR
 ````
 
 The Mermaid must mirror the `.drawio` exactly (same nodes + edges). It is **disposable** — tell the
-user to delete it after they confirm the drawio and export the PNG.
+user to delete it after they confirm the drawio and export the PNG manually
+(`drawio -x -f png -o docs/diagrams/infra.png docs/diagrams/infra.drawio`; headless: prefix
+`xvfb-run -a`; Electron sandbox errors: add `--no-sandbox`).
 
 ## Phase 4.5: Project README (repo entry point)
 
@@ -207,24 +258,31 @@ than guess). This is **public-facing**, so no account IDs, ARNs, or secrets in t
 
 ## Phase 5: STOP at Gate G5
 
+**Default (PNG exported):**
+
 ```
 ## Infrastructure doc ready for review (G5)
 
 Written:
 - docs/infrastructure.md
-- docs/diagrams/infra.drawio   (drawio XML OK)
+- docs/diagrams/infra.drawio   (validator PASS: 0 errors, M warnings)
+- docs/diagrams/infra.png      (auto-exported, vision-checked ✓ — or list residual visual issues)
 - README.md   (repo entry point — created/refreshed)
-- Mermaid verification block embedded in §2 (temporary)
 
 ### Diagram summary: [N nodes, M edges; ingress → compute → data]
 ### Components documented: [list modules/resources]
 
 ---
 👉 Next:
-   1) Open docs/diagrams/infra.drawio in draw.io and check it matches the Mermaid block.
-   2) Export it to docs/diagrams/infra.png, then delete the Mermaid verification block.
-   3) Review docs/infrastructure.md — does §1–§3 make the infra clear on a single read?
+   1) Open docs/diagrams/infra.png — is the architecture right? (infra.drawio is the editable
+      source for layout tweaks; re-run /infra-document or the exporter after editing it)
+   2) Review docs/infrastructure.md — does §1–§3 make the infra clear on a single read?
    Re-run /infra-document anytime the infra changes — it's a living document.
 ```
+
+**Fallback (export failed):** same summary, but state the export-failure reason, list the
+`Mermaid verification block embedded in §2 (temporary)` line instead of the PNG line, and the
+Next steps revert to the manual flow: open `infra.drawio` in draw.io → check it matches the
+Mermaid block → export `docs/diagrams/infra.png` → delete the Mermaid block.
 
 **Do not commit.** Wait for the human.
