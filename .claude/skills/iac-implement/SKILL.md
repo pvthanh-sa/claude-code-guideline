@@ -84,6 +84,9 @@ ls -1 "$LIB/modules"   # the list of modules
 If `REGENERATE`: for each `modules/<name>/`, read its `variables.tf` (required inputs — those
 without a `default`) and `outputs.tf` (output names), infer purpose from the directory name and
 `main.tf` resources, and find an example usage under `$LIB/environments/*/main.tf` if present.
+**Preserve any hand-maintained content** — if the old catalog has annotations outside the table
+(e.g. an "(external repo)" marker or a Notes section), carry them over verbatim; a regenerate
+must never silently drop human context (it did once — 2026-07 E2E run, item F).
 Then **write `$LIB/MODULES.md`** as a table:
 
 ```markdown
@@ -108,6 +111,16 @@ Cover **every** module dir (the library has ~36: `network`, `vpc-endpoints-netwo
 drop modules — list them all.
 
 ## Phase 2: Map spec → modules + decide sourcing layout
+
+> **Mandatory pattern — CloudFront origin mTLS.** If the spec wires **CloudFront → an origin you
+> control** (ALB / custom origin), the implementation MUST include **origin mTLS**: the `cloudfront`
+> module with `origin_client_certificate_arn` set, **and** the origin's ALB listener running
+> `mutual_authentication { mode = "verify" }` against a trust store (CA bundle in S3). A CloudFront
+> prefix list or shared-secret header alone is NOT sufficient (the CloudFront IP ranges are shared
+> across all AWS accounts). The client cert is imported out-of-band to ACM **us-east-1** (never minted
+> in Terraform — keep the key out of state) and passed in as a variable. Exceptions: S3 origins → OAC;
+> in-VPC origins → VPC origins/PrivateLink. If the spec omitted it, flag it before scaffolding rather
+> than building an origin that's reachable by bypassing CloudFront.
 
 1. Build the implementation plan: for each component in the spec's §3/§8, prefer an **existing**
    library module. The library does **not** cover everything, so authoring a new module is a
@@ -253,6 +266,15 @@ Run **both** Checkov and Trivy — their rulesets differ, so each catches miscon
 (this is the production norm). Report counts from each, and **report any tool that was SKIPPED as
 "not run" — never as clean** (the CI gate below runs them all regardless).
 
+**Suppressing a Trivy finding (`.trivyignore`) — scope it to THIS project.** When a HIGH/CRITICAL
+finding is a deliberate, spec-recorded decision (e.g. SSE-S3 not CMK, no-WAF lab), add a
+project-local `.trivyignore` entry with a comment justifying it and citing the spec section (`§5`,
+`§9a`). **Never copy another project's `.trivyignore` wholesale** — inherited entries either suppress
+rules for resources this project doesn't have (dead, misleading) or, worse, silently suppress a
+*real* finding the sibling accepted but this project shouldn't. Start empty, add only what actually
+fires here, and **re-run `trivy config` after editing it** to confirm the gate is still green (an
+over-broad suppression hides regressions; an over-narrow one re-surfaces an accepted risk as a block).
+
 Then, only if the user confirms backend/credentials are ready:
 
 ```bash
@@ -281,6 +303,13 @@ fi
 
 > If creds aren't available at G3, defer this to G4 — `/infra-review`'s `security-auditor` also flags
 > IAM least-privilege issues. Access Analyzer here is the *deterministic* complement (tool, not AI).
+>
+> **Greenfield caveat (2026-07 E2E finding):** on a first apply, inline policies that reference
+> not-yet-created resources are **unknown in `tfplan.json`** — only assume-role documents render, and
+> validating those as RESOURCE_POLICY false-positives ("add a Resource element"; trust policies have
+> none by design). So: skip trust policies here, and validate the **live** role policies right after
+> apply instead (`aws iam get-role-policy` → `validate-policy --policy-type IDENTITY_POLICY`) — see
+> the guide's "After G3: apply → verify → teardown".
 
 (The PostToolUse hook already auto-runs `terraform fmt` on edited `.tf` files.)
 

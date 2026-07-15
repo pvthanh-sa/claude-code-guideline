@@ -16,6 +16,16 @@ Receive request → /spec-architect → /init-project → /iac-implement → /in
 > done, **STOPS** at an _approval gate_ and waits for you. There is no run-everything-automatically
 > mode. No step auto-runs `terraform apply` or `git commit`.
 
+> **Mandatory security default — CloudFront origin mTLS.** Any architecture where CloudFront fronts
+> an origin you control (ALB / custom origin) MUST use **origin mTLS** to lock the origin to the
+> distribution (CloudFront presents a client cert the origin verifies). A CloudFront **prefix list or
+> shared-secret header alone is NOT sufficient** — the origin-facing CloudFront IP ranges are shared
+> across all AWS accounts, so anyone can point their own distribution at your origin and pass. This is
+> enforced at G1 (`/spec-architect` records it in §5/§8) and G3 (`/iac-implement` wires `cloudfront`'s
+> `origin_client_certificate_arn` + an ALB `mutual_authentication mode=verify` listener + trust store).
+> Exceptions: S3 origins → OAC; in-VPC origins → VPC origins/PrivateLink. Reference implementation:
+> the `cloudfront-mtls-origins` project.
+
 > **Sessions (important):** Stage 1 = a throwaway session (`claude --mcp-config …`). Stage 2 = its
 > own session in the new project dir, then a **restart** to load `.claude/`. **Stages 3 → 4 → 5 → 6
 > all run in that one project session** — don't open a new session between them: the `/infra-review`
@@ -77,7 +87,9 @@ some loudly (terraform, scanners), some **silently** (MCP servers just don't sta
 | `node`/`npx` | grafana/ansible MCP (only if used) | nvm / distro pkg |
 | `tflint` `checkov` `trivy` | Stage 3 local IaC scan (else SKIPPED, reported "not run") | see [`security-scans-cli.md`](security-scans-cli.md) §0 |
 | `betterleaks` (or `gitleaks`) | Stage 6 secret scan (hard-fails at G6 if none) | `brew install betterleaks` / binary / `docker pull ghcr.io/betterleaks/betterleaks:latest` |
-| `xmllint` or `python3-defusedxml` | Stage 5 diagram XML validation (else "UNVALIDATED" warn) | `apt install libxml2-utils` |
+| `drawio` (desktop CLI) | Stage 5 auto-exports `infra.png` from the diagram; without it Stage 5 falls back to manual export + a Mermaid mirror | deb/AppImage from [drawio-desktop releases](https://github.com/jgraph/drawio-desktop/releases); headless machines also need `xvfb` (`apt install xvfb`) |
+| `python3` | Stage 2 `/init-project` builds `.mcp.json` with it (hard-fails Phase 5 if absent); Stage 5 diagram validator `validate-drawio.py` (stencil catalog + geometry lint; uses `defusedxml` if present) | preinstalled on most distros; else `apt install python3` |
+| `openssl` | `scripts/mint-certs.sh` for **mTLS projects** (self-signed CA + client/server leaves) | preinstalled on Linux/macOS; else `apt install openssl` |
 
 (§1.5 below verifies all of these in one command.)
 
@@ -120,7 +132,8 @@ done
 
 > **Why symlink matters for file resolution:** each skill reaches back into the guideline repo for
 > the files it needs at runtime — templates (`iac-scan.yml`, `secret-scan/`, `infra-document-template.md`),
-> the MCP catalog (`.mcp.guideline-only.json`), `drawio-reference.md`. It finds them by following its
+> the MCP catalog (`.mcp.guideline-only.json`), the Stage-5 diagram toolkit (`drawio-reference.md`,
+> `validate-drawio.py`, `aws4-stencils.json`, `export-diagram.sh`). It finds them by following its
 > **own symlink** (`readlink -f`) back to the repo, so **no path needs configuring for these** — the
 > symlink in §1.1 is enough, wherever the repo is cloned. If a skill is *copied* instead of symlinked,
 > that back-reference breaks and the skill now **stops with a clear error** telling you to symlink it.
@@ -227,9 +240,10 @@ done
 echo "== module library =="
 test -d "$TF_MODULE_LIB/modules" && echo "ok  TF_MODULE_LIB ($TF_MODULE_LIB)" || echo "FAIL TF_MODULE_LIB unset or no modules/ — clone custom-infra (§1.0/§1.3)"
 echo "== CLIs / runtimes =="
-for t in terraform aws uvx docker tflint checkov trivy; do command -v $t >/dev/null && echo "ok  $t" || echo "FAIL $t (see §1.0)"; done
+for t in terraform aws uvx docker tflint checkov trivy python3; do command -v $t >/dev/null && echo "ok  $t" || echo "FAIL $t (see §1.0)"; done
 command -v betterleaks >/dev/null || command -v gitleaks >/dev/null && echo "ok  secret scanner" || echo "FAIL no betterleaks/gitleaks (§1.0)"
-command -v xmllint >/dev/null || python3 -c 'import defusedxml' 2>/dev/null && echo "ok  xml validator" || echo "warn no xmllint/defusedxml (Stage 5 diagram stays unvalidated)"
+command -v drawio >/dev/null && echo "ok  drawio (Stage 5 PNG auto-export)" || echo "warn no drawio CLI — Stage 5 degrades to manual PNG export + Mermaid mirror (§1.0)"
+command -v openssl >/dev/null && echo "ok  openssl" || echo "warn no openssl — only needed for mTLS projects (mint-certs.sh)"
 echo "== spec MCP config =="
 test -f ~/.claude/spec-mcp.json && { grep -q '<your-' ~/.claude/spec-mcp.json && echo "FAIL spec-mcp.json still has <your-> placeholders to fill (§1.4)" || echo "ok  spec-mcp.json filled"; } || echo "FAIL spec-mcp.json missing (§1.4)"
 echo "== AWS creds (read-only MCP profile) =="
@@ -248,7 +262,7 @@ All `ok`? You're ready for Stage 1. Any `FAIL` points at the section to fix.
 | 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`                    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
 | 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`                       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
 | 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md`          | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
-| 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` + `README.md` | **G5** | doc accurate? diagram correct?     | export PNG, delete Mermaid, commit              |
+| 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` + auto-exported `infra.png` + `README.md` | **G5** | doc accurate? diagram correct?     | review doc + PNG, commit                        |
 | 6   | `/secret-scan`                | scan result + guardrail (hook + CI)                     | **G6** | clean? real leak to rotate?        | `git push` (hook + CI re-scan)                  |
 
 **Safety invariant:** `.claude/settings.json` (**copied** into the project by `/init-project` if the
@@ -537,9 +551,25 @@ directory per convention, and stop at `terraform plan` for you to review.
    trivy config . --severity HIGH,CRITICAL
    # + AWS Access Analyzer on any IAM policies (deterministic, needs creds)
    ```
+
+   > **First-time only — create the state bucket before this real `terraform init`.** It's
+   > provisioned out-of-band by the `create-tf-state-bucket.sh` bootstrap script (hardened S3:
+   > block-public + versioning + SSE-KMS default + TLS-only + lifecycle; S3-native lock, no DynamoDB).
+   > The script prints a `backend.tf` (commit) + a gitignored `backend-<env>.hcl` (bucket/region/profile).
+   >
+   > **For state holding secrets** (VPN PSK, DB master password, IAM keys), run it with
+   > **`--enforce-kms --kms-key-id=<CMK ARN>`**. `--enforce-kms` **requires** a customer-managed key
+   > (the default `alias/aws/s3` is rejected — it can't be scoped and pinning to it is meaningless):
+   > it writes `kms_key_id` into the `.hcl` so Terraform actually writes **SSE-KMS** (not the SSE-S3
+   > that `encrypt = true` alone silently falls back to), **and** adds a bucket policy denying any
+   > `PutObject` not using `aws:kms` (a CMK ARN also pins the exact key + gives a scoped `kms:Decrypt`
+   > key policy). The CMK must already exist (create it out-of-band, same as the bucket).
+   >
+   > **Full guide — both modes + the CMK-creation recipe:** [`terraform-state-backend.md`](terraform-state-backend.md).
+
    Then (once you confirm credentials/backend are ready):
    ```bash
-   terraform init
+   terraform init -backend-config=backend-<env>.hcl
    terraform plan -out=tfplan
    ```
 6. **Installs the CI security gate** — `.github/workflows/iac-scan.yml` (idempotent, drift-aware).
@@ -567,74 +597,101 @@ Your job:
 > (review on code/plan). For simple dev, you may `apply` then `/infra-review` to also check live
 > resources.
 
+### 5. After G3 — apply → verify → teardown
+
+The gates end at "you apply", but the 2026-07 Cognito E2E run proved the most valuable defects
+only surface **after** apply (an aoss request-signing quirk, CloudTrail redacting Cognito
+identities, an event-source-mapping activation race — none visible to fmt/tflint/checkov/trivy
+or the plan). Treat this as part of Step 3, not an afterthought:
+
+- **Functional validation — script it, don't click it.** Put a `scripts/e2e-test.sh` in the lab
+  (pattern: read `terraform output` for endpoints; **poll with a timeout instead of failing
+  fast** — eventually-consistent paths like CloudTrail→EventBridge legitimately take 20 s–3 min;
+  include **negative tests** (no-auth → 401/403) and make the script **clean up its own test
+  data**). Guard poll assertions against vacuous passes (`jq 'all(...)'` over an empty array is
+  true — require `length >= 1` first). Keep the transcript as evidence
+  (`docs/functional-tests.md`).
+- **Post-apply IAM check.** On greenfield stacks the G3 Access Analyzer step can't see inline
+  policies at plan time (they reference unknown values) — validate the **live** role policies
+  after apply: `aws iam get-role-policy … | aws accessanalyzer validate-policy
+  --policy-type IDENTITY_POLICY`. Don't validate trust policies as RESOURCE_POLICY (false
+  "missing Resource" errors).
+- **Teardown runbook (labs).** Same discipline as apply — plan first:
+  ```bash
+  terraform plan -destroy -out=tfplan-destroy   # review what dies
+  terraform apply tfplan-destroy
+  # spot-check nothing survived (adjust to your stack):
+  aws cognito-idp list-user-pools --max-results 10 · aws opensearchserverless list-collections
+  aws dynamodb list-tables · aws cloudtrail describe-trails · terraform state list  # → 0
+  ```
+- 💸 **Idle-floor warning — pausing ≠ free.** Some services bill a floor **every hour they
+  exist, idle or not**: OpenSearch Serverless (~$6/day at 1 OCU), NAT gateways, ALBs,
+  provisioned RDS. If a lab run pauses for hours/days (tokens, meetings, weekends), **destroy
+  and re-apply later** — with state + code intact the rebuild is one `terraform apply`
+  (~5 min in the Cognito lab). Budget guardrail for anything that must stay up: AWS Budgets
+  alert at the lab ceiling (free).
+
 ---
 
 ## Step 4 — `/infra-review` (Gate G4)
 
-**Goal:** a thorough review across **3 parallel perspectives**, merged into **one** prioritized
-report + go/no-go.
+**Goal:** one prioritized go/no-go report from 3 parallel reviewers — then you decide.
 
-### 1. Run the command
+### Run it
 
 ```
+/infra-review environments/dev-care-hub            # normal re-review: single pass + auto baseline
+/infra-review environments/dev-care-hub --deep     # first review / deep audit: loop-until-dry
+```
+
+Flags (you rarely need more than `--deep`):
+- `--deep` — loop the finders until 2 dry rounds (one AI pass isn't exhaustive). Use on the **first review** + occasional deep audits.
+- `--baseline <report>` — force a specific prior report as the comparison (default: auto-detects the latest `docs/reviews/<env>-*.md`).
+- `--no-baseline` — review with **no** comparison (drops the RESOLVED/NEW/STILL-OPEN labels).
+- `--note "<what changed>"` — record what you just changed: it's written into the report **and** points the finders at that change (still full-scan). Use it on a re-review after editing the IaC.
+
+### What each run does
+
+1. **3 reviewers in parallel** (watch with `/workflows`): `security-auditor` (secrets/IAM/encryption/network/CI) · `infra-reviewer` (naming/tagging/pinning + resource waste) · `cost-optimizer` ($ savings). They **always full-scan** the whole env — no delta-skip, so a regression in a file you didn't touch is still caught.
+2. **Synthesize → one report** (recommendation · severity counts · must-fix-before-apply · cost savings), saved to **`docs/reviews/<env>-<date>.md`** and shown in chat.
+3. **Baseline labels** (on a re-review): the skill feeds the previous report as the baseline, so each finding is tagged **[RESOLVED] / [NEW] / [STILL-OPEN]** and the report leads with *"vs last run: N resolved, K new — regression: no"*. The first run has no baseline.
+
+> Findings the spec lists under **Accepted risks** (`docs/specs/*.spec.md`) are still reported but **excluded** from the go/no-go counts — that's how a conscious decision stops blocking. Real defects stay **[STILL-OPEN]** every run until fixed.
+
+### 🚪 GATE G4 — you decide
+
+Claude **STOPS** and asks: `[a] fix all Critical/High · [b] fix only the ones I pick · [c] no-go`.
+On a fix it edits the code, **re-runs the affected scanner** (trivy/checkov), and shows the `git diff`
+— **no apply, no commit**. `terraform apply tfplan` is always yours.
+
+### Real usage — the loop
+
+```bash
+# 1) First review — deep, no baseline yet
+/infra-review environments/dev-care-hub --deep
+#   → docs/reviews/dev-care-hub-2026-06-04.md  ·  GO-WITH-FIXES · High 2 · Medium 3
+
+# 2) Fix the 2 High (Claude edits + re-runs trivy/checkov; no apply/commit)
+
+# 3) Confirm — plain single pass, baseline auto-detected
 /infra-review environments/dev-care-hub
+#   → "Change since last review: 2 resolved · 0 new · 3 still-open — regression: no"  →  GO
+#     (the 2 High now show [RESOLVED]; the Mediums [STILL-OPEN])
+
+# 4) Clean → you apply
+terraform apply tfplan
+
+# 5) Day-2: you add Redis. Edit .tf, then re-review WITH a note of what changed:
+/infra-review environments/dev-care-hub --note "added ElastiCache Redis to the API tier"
+#   → report opens: "Changes this round: added ElastiCache Redis …"  (+ finders focus there, still full-scan)
+#   → [NEW][High] ElastiCache transit encryption off …   ← from your change; baseline re-confirmed the rest
 ```
 
-> **Higher recall:** add `--deep` → `/infra-review environments/dev-care-hub --deep`. It loops the
-> finders until 2 consecutive rounds surface no new findings (a single AI pass is **not exhaustive**
-> — that's why a 2nd run often finds more; see §14). Default (no flag) = one pass.
+- **`--deep` only on the first review** (or an occasional deep audit) — every confirm / Day-2 re-check is a plain single pass.
+- **Changed the IaC? Re-review with `--note "<what changed>"`** — you never hand-edit the old report (it's regenerated); the note lands in the **new** report and points the finders at your change, while baseline labels the rest [RESOLVED]/[NEW]/[STILL-OPEN].
+- A finding you **won't fix on purpose** → put it in the spec's **Accepted risks**, so it stops blocking (real defects stay [STILL-OPEN] until fixed). The report is a regenerated snapshot — never hand-edit it.
 
-### 2. What happens
-
-The skill calls the **`infra-review` Workflow**, running **in parallel**:
-
-- `security-auditor` — secrets, IAM, encryption, network, container, CI/CD
-- `infra-reviewer` — naming/tagging/variables/pinning + **resource waste**
-- `cost-optimizer` — instances, NAT, log retention, storage tier, $ savings
-
-Watch it live by typing `/workflows` (3 agents running concurrently → 1 synthesize phase).
-
-> The skill runs the workflow from **`~/.claude/workflows/infra-review.js`** (installed by the
-> one-time setup §1.1, a machine-independent path), so it works from any project — you do **not**
-> copy `infra-review.js` into the project. It relies on the `security-auditor` / `infra-reviewer` /
-> `cost-optimizer` agents that `/init-project` copied into `.claude/agents/`.
-
-### 3. Result: one merged report (saved to a file)
-
-The report is written to **`docs/reviews/<env>-<date>.md`** (e.g.
-`docs/reviews/dev-care-hub-2026-06-04.md`) — so Stage 5 and later sessions can read it — and shown in chat:
-
-```
-## Infrastructure Review Report (G4) — environments/dev-care-hub
-_Saved: docs/reviews/dev-care-hub-2026-06-04.md_
-### Recommendation: GO-WITH-FIXES
-### Severity: Critical 0 · High 2 · Medium 3 · Low 1
-### Estimated savings: ~$28/month
-
-### Must fix before apply (Critical/High):
-1. [High][security] RDS missing storage_encrypted — rds module: set storage_encrypted = true
-2. [High][infra] ALB SG opens 0.0.0.0/0 on port 80 — restrict to CloudFront prefix list
-
-### Cost-saving recommendations:
-1. dev should use single_nat_gateway = true — ~$32/month (risk: Low)
-2. log retention 30d → 14d — ~$X (risk: Low)
-```
-
-### 4. 🚪 GATE G4 — you decide
-
-Claude **STOPS** and asks:
-
-```
-[a] Fix all Critical/High   [b] Fix only the items I pick   [c] No-go / stop
-```
-
-- You choose (e.g. `b, fix items 1 and 2`).
-- Claude lists the changes it will make, **waits for your OK**, then edits the working tree (the
-  hook auto-runs `terraform fmt`), re-runs validation, and shows `git diff` — **still no apply, no
-  commit**.
-- To be sure: re-run `/infra-review` to confirm findings are gone → then you `terraform apply tfplan`.
-
-➡️ Next: document it (Step 5, same session). Commit the IaC + saved review whenever you choose.
+➡️ Next: `/infra-document` (Step 5, same session). Commit the IaC + saved review when you're ready.
 
 ---
 
@@ -656,21 +713,29 @@ diagram, so the team has one source of truth that stays in sync with the code.
 2. Writes **`docs/infrastructure.md`** (8 sections, comprehension-first: overview → diagram (+ numbered
    key) → **how it works** walkthrough → components → network → environments → security → cost).
 3. Hand-authors **`docs/diagrams/infra.drawio`** — one combined diagram with AWS Cloud / Region /
-   VPC / subnet groups (proven `mxgraph.aws4` styles), validated as well-formed XML.
-4. Embeds a **temporary Mermaid block** in §2 mirroring the diagram, so you can verify it without
-   opening draw.io (guards against a malformed/incorrect `.drawio`).
-5. **Coverage check:** confirms every `module` in `main.tf` appears as a node in the diagram (and a
+   VPC / subnet groups (proven `mxgraph.aws4` styles) — then **gates it through the shipped
+   `validate-drawio.py`**: every stencil name checked against the AWS4 catalog (a wrong name
+   renders as a blank icon with no error), plus overlap/bounds geometry lint and dangling-edge
+   lint. Fixes and re-runs (caps at 5 attempts, then stops and reports the residual errors).
+4. **Exports `docs/diagrams/infra.png`** with the drawio CLI (headless-safe fallback chain), then
+   **looks at the PNG itself** (vision check: blank icons, clipped/colliding labels, mis-attached
+   edges) and fixes the diagram — up to 3 rounds.
+5. Only if PNG export is **impossible** on this machine (no drawio CLI / no display): embeds the
+   temporary Mermaid mirror in §2 + manual-export instructions, as before.
+6. **Coverage check:** confirms every `module` in `main.tf` appears as a node in the diagram (and a
    row in §4) — flags anything drawn-but-missing before you review.
-6. Creates/refreshes a top-level **`README.md`** — the public-facing entry point (overview, layout,
+7. Creates/refreshes a top-level **`README.md`** — the public-facing entry point (overview, layout,
    prerequisites, deploy steps, CI gates, links to the docs). Won't clobber an existing README.
 
 ### 3. 🚪 GATE G5 — you approve
 
 Claude **STOPS**. Your job:
 
-- [ ] Open `docs/diagrams/infra.drawio` in draw.io — does it match the Mermaid block in §2?
-- [ ] Export it to `docs/diagrams/infra.png`, then **delete** the Mermaid verification block.
+- [ ] Open `docs/diagrams/infra.png` — is the architecture right? (validator + vision check already
+      passed; `infra.drawio` is the editable source if you want layout tweaks)
 - [ ] Review `docs/infrastructure.md` (accurate? gaps marked TODO?). Commit when you're ready.
+- [ ] **Fallback only** (Claude reported PNG export failed): open the `.drawio`, compare with the
+      Mermaid block in §2, export `infra.png` manually, delete the Mermaid block.
 
 > It's a **living document** — re-run `/infra-document` whenever the infra changes to refresh the
 > doc + diagram from code.
@@ -711,6 +776,8 @@ each time. There are four ways to run it (the first two need no AI, no typing):
    ```
    `git .` scans committed history; swap for `dir .` to also catch **uncommitted** files (useful in a
    mostly-unstaged repo). Exit 0 = clean; non-zero = potential secret(s), value redacted.
+   ⚠️ On a repo with **no commits yet** (fresh lab, pre-first-commit), `git .` scans **0 bytes** and
+   passes vacuously — run the `dir .` working-tree pass for the real verdict before that first commit.
 3. **Automatic in CI (no AI)** — `.github/workflows/secret-scan.yml` re-scans full history on every
    push/PR (server-side backstop, independent of your machine).
 4. **Via the skill (AI-assisted)** — `/secret-scan`. Use this when you want Claude to run the scan
@@ -762,7 +829,7 @@ The pipeline focuses on _building_. After `apply`, other skills/agents support o
 # --- One-time setup (full sequence: §1.0 clone+install → §1.1 symlink → §1.3 var → §1.4 spec MCP → §1.5 verify) ---
 GUIDE=~/Documents/Devops/claude-code-guideline   # set to YOUR clone of the guideline repo (§1.0)
 # git clone <guideline-url> "$GUIDE"; git clone <custom-infra-url> ~/Documents/Devops/terraforms/custom-infrastructure
-# install: terraform aws uv/uvx docker node tflint checkov trivy betterleaks(or gitleaks)  (see §1.0)
+# install: terraform aws uv/uvx docker node python3 openssl drawio tflint checkov trivy betterleaks(or gitleaks)  (see §1.0)
 mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
 for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
   ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
@@ -786,9 +853,11 @@ claude --mcp-config ~/.claude/spec-mcp.json                # spec session with a
 /add-dir $TF_MODULE_LIB
 /iac-implement docs/specs/care-hub.spec.md environments/dev-care-hub   # G3: terraform plan
 terraform apply tfplan                                     # you press it
+bash scripts/e2e-test.sh                                   # functional verify (poll, negative tests, self-cleanup — Step 3 §5)
+#   lab teardown when done: terraform plan -destroy -out=tfplan-destroy && terraform apply tfplan-destroy
 /infra-review environments/dev-care-hub                    # G4: parallel review (add --deep = loop-until-dry)
-/infra-document environments/dev-care-hub                  # G5: living doc + AWS-grouped drawio
-#   → open .drawio, export PNG, delete Mermaid, commit docs/
+/infra-document environments/dev-care-hub                  # G5: living doc + validated drawio + auto-exported PNG
+#   → review doc + infra.png, commit docs/  (fallback: export PNG + delete Mermaid manually)
 /secret-scan --setup                                       # G6: install guardrail (once per project)
 /secret-scan                                               # G6: scan before push
 #   → clean? you `git push` (pre-push hook + CI re-scan)
@@ -811,6 +880,9 @@ terraform apply tfplan                                     # you press it
 
 - [ ] `plan` has right resources, nothing deleted by mistake · [ ] correct modules reused ·
       [ ] checkov/tflint clean · [ ] decided review-first vs apply-first
+- [ ] after apply: functional verify scripted + passing (poll, negative tests, cleanup) ·
+      [ ] greenfield: live IAM policies through Access Analyzer · [ ] lab: teardown planned
+      (idle-floor services bill hourly — Step 3 §5)
 
 **G4 (after /infra-review)**
 
@@ -819,8 +891,9 @@ terraform apply tfplan                                     # you press it
 
 **G5 (after /infra-document)**
 
-- [ ] `.drawio` matches the Mermaid block · [ ] exported `infra.png` + deleted Mermaid ·
-      [ ] `infrastructure.md` accurate (gaps marked TODO) · [ ] committed `docs/`
+- [ ] `infra.png` matches the architecture (auto-exported + vision-checked) ·
+      [ ] `infrastructure.md` accurate (gaps marked TODO) · [ ] committed `docs/` ·
+      [ ] (fallback only) exported `infra.png` manually + deleted the Mermaid block
 
 **G6 (after /secret-scan)**
 
@@ -845,6 +918,9 @@ terraform apply tfplan                                     # you press it
 | Claude tries to `terraform apply`                                     | Doesn't happen by design; `settings.json` also denies `apply -auto-approve`. If you see it, stop and report.                                                                                                                                                                              |
 | Deny list (destroy/apply block) missing in the project                | `/init-project` only **copies** `settings.json` when the project **has none**; if a different one already exists it's not overwritten. Open `.claude/settings.json` and merge in the deny list from the guideline repo. `--sync` also **doesn't** touch this file.                        |
 | `terraform init` backend error                                        | S3 backend not created / wrong profile. Create the state bucket + fix `backend.tf`, or validate with `init -backend=false` first.                                                                                                                                                         |
+| Stage 5 reports "PNG export failed"                                   | No drawio CLI / no X server / Electron sandbox error. Install draw.io desktop (§1.0); headless machines: `apt install xvfb` (the skill auto-retries with `xvfb-run -a` and `--no-sandbox`). Worst case: export manually from draw.io — the doc keeps the Mermaid mirror until you do.       |
+| Applied fine, but events/records aren't flowing                       | Usually eventual consistency, not a bug: CloudTrail→EventBridge takes 20 s–3 min; a new DynamoDB-stream mapping takes ~1 min to activate (and `LATEST` **skips** writes made before activation — prefer `TRIM_HORIZON` with idempotent consumers). Functional tests must poll with a timeout, never fail fast. |
+| Long pause mid-run and the lab is burning money                       | Idle-floor services (aoss ≈$6/day, NAT, ALB, provisioned RDS) bill hourly while they exist. `terraform plan -destroy` → `apply tfplan-destroy`, resume later — state + code make the rebuild one apply (Step 3 §5).                                                                          |
 
 ---
 
@@ -857,6 +933,15 @@ A: Rename the skill folder in the guideline repo + the `name:` field in `SKILL.m
 A: Yes. Each skill is independent. Re-running `/iac-implement` re-scaffolds/syncs; re-running
 `/infra-review` confirms findings are gone. `/init-project --sync` refreshes installed
 skills/agents/rules in the project after a `git pull` of the guideline repo.
+
+**Q: Can Claude drive the whole pipeline for me (delegated run)?**
+A: Yes — both E2E test runs (viewer-mtls 2026-06, cognito-user-search 2026-07) ran this way. What
+changes: the pipeline skills are `disable-model-invocation` (only a human can type `/spec-architect`),
+so in a delegated run Claude **reads each SKILL.md and executes its phases manually**; gate decisions
+are self-approved **and recorded in the artifacts** (spec §9 for design decisions/accepted risks,
+`docs/reviews/` for G4, `docs/functional-tests.md` for verification); when the session's working dir
+isn't the lab repo, everything runs via absolute paths. You still explicitly authorize `apply`,
+teardown, and any `git push` up front — those never happen implicitly.
 
 **Q: Do I need a new session between steps?**
 A: Only twice — Stage 1 → 2 (the new project folder needs its own `claude`), and the restart after

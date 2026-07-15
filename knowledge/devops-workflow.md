@@ -40,7 +40,7 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
        │
    ┌───▼────────────────┐   ── G5 ──►  you approve the document + diagram
    │ 5. DOCUMENT       │
-   │   /infra-document  │   living doc + AWS-grouped infra.drawio (+ Mermaid verify) + README
+   │   /infra-document  │   living doc + validated infra.drawio + auto-exported infra.png + README
    └───┬────────────────┘
        │
    ┌───▼────────────────┐   ── G6 ──►  secret scan clean → you `git push`
@@ -62,9 +62,9 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
 | ------ | ----------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
 | **G1** | `/spec-architect` | `docs/specs/<name>.spec.md` + list of open decisions                       | Is the spec right? Services/cost/SLO OK?                                   | create project folder → `/init-project`                   |
 | **G2** | `/init-project`   | `CLAUDE.md` (tracked) + `.claude/` & `.mcp.json` (**gitignored** — public-repo safe)      | Stack detected correctly? CLAUDE.md correct? Fill `.mcp.json` placeholders | `/add-dir` custom-infra → `/iac-implement <spec>`         |
-| **G3** | `/iac-implement`  | `terraform plan` output (NO apply)                                         | Plan correct? Resources sensible? Right modules reused?                    | you run `terraform apply tfplan` OR `/infra-review <env>` |
+| **G3** | `/iac-implement`  | `terraform plan` output (NO apply)                                         | Plan correct? Resources sensible? Right modules reused?                    | you run `terraform apply tfplan` OR `/infra-review <env>`; after apply: scripted functional verify + (labs) same-day teardown |
 | **G4** | `/infra-review`   | one merged report (severity + savings + go/no-go), saved to `docs/reviews/<env>-<date>.md` | Which items to fix? Go or no-go?                                           | ask Claude to fix specific items, then `/infra-document`  |
-| **G5** | `/infra-document` | `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (+ Mermaid verify) + `README.md` | Doc accurate? Diagram correct? README clear?                              | export drawio→PNG, delete Mermaid, commit                 |
+| **G5** | `/infra-document` | `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (validator-gated) + auto-exported `infra.png` + `README.md` | Doc accurate? Diagram correct? README clear?                              | review doc + PNG, commit (fallback: export PNG + delete Mermaid) |
 | **G6** | `/secret-scan`    | scan result + installed guardrail (Betterleaks/Gitleaks)                   | Clean? any real leak to rotate?                                            | `git push` (pre-push hook + CI re-scan as backstop)       |
 
 > **Safety invariant:** `settings.json` (copied into the project by `/init-project` if absent)
@@ -126,6 +126,13 @@ Two misconfig scanners (Checkov + Trivy) catch different issues; the same checks
 every PR (defense-in-depth).
 **→ Stop at G3** with the `plan` output. You run `terraform apply tfplan` once approved.
 
+**After apply — verify, then plan the teardown** (guide Step 3 §5): script the functional
+validation (poll with timeouts — CloudTrail→EventBridge and stream-mapping activation are
+eventually consistent; include negative tests + self-cleanup), run Access Analyzer on the
+**live** IAM policies for greenfield stacks (plan-time rendering can't see them), and for labs
+tear down the same day with `plan -destroy` → `apply tfplan-destroy` — idle-floor services
+(aoss/NAT/ALB) bill hourly even when unused; destroying and re-applying later is one command.
+
 ### Step 4 — Review before/after deploy: `/infra-review <env-dir>`
 
 Calls the `infra-review` Workflow, which runs **three perspectives in parallel** (security /
@@ -140,10 +147,12 @@ confirmation before changing any code.
 ### Step 5 — Document the infrastructure: `/infra-document <env-dir>`
 
 Derives the as-built architecture from the Terraform module wiring + spec and writes a **living
-document** `docs/infrastructure.md`, an editable AWS-grouped `docs/diagrams/infra.drawio`, and a
-temporary Mermaid block to verify the diagram. Re-run it whenever the infra changes.
-**→ Stop at G5.** Open the `.drawio`, check it matches the Mermaid, export to PNG, delete the
-Mermaid block, review the doc, then commit. Claude does not commit.
+document** `docs/infrastructure.md`, an editable AWS-grouped `docs/diagrams/infra.drawio` **gated
+by a stencil/geometry validator**, and an **auto-exported `docs/diagrams/infra.png`** that Claude
+visually verifies (a temporary Mermaid mirror is emitted only when PNG export is impossible on the
+machine). Re-run it whenever the infra changes.
+**→ Stop at G5.** Review the PNG + doc, then commit (fallback machines: export the PNG manually
+and delete the Mermaid block). Claude does not commit.
 
 ### Step 6 — Secret scan before push: `/secret-scan [--setup | --scan]`
 The last gate before code reaches GitHub. Scanning is done by a **tool** — **Betterleaks**
