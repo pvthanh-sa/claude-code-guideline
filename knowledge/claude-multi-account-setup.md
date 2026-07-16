@@ -97,6 +97,16 @@ __claude_current() {   # bundle name matching the currently active identity (by 
 }
 __claude_save() {      # persist the current live token + identity into one account's bundle
   local acc="$1" base="$HOME/.claude/.accounts"; [ -n "$acc" ] || return 0
+  # GUARD: never overwrite a bundle with an empty/broken token. Without this, an
+  # auto-save that fires while the live credentials are a blank mid-login/logout
+  # state wipes a good bundle's tokens (accessToken/refreshToken become "") and
+  # that account can no longer refresh -> forced re-login.
+  local at rt
+  at=$(jq -r '(.claudeAiOauth.accessToken // .accessToken // "")' "$HOME/.claude/.credentials.json" 2>/dev/null)
+  rt=$(jq -r '(.claudeAiOauth.refreshToken // .refreshToken // "")' "$HOME/.claude/.credentials.json" 2>/dev/null)
+  if [ -z "$at" ] || [ -z "$rt" ]; then
+    echo "claude: refusing to save empty/broken credentials for '$acc'" >&2; return 0
+  fi
   cp -f "$HOME/.claude/.credentials.json" "$base/$acc.credentials.json" 2>/dev/null
   jq '.oauthAccount' "$HOME/.claude.json" > "$base/$acc.oauthAccount.json" 2>/dev/null
   chmod 600 "$base/$acc.credentials.json" 2>/dev/null
@@ -150,6 +160,11 @@ __claude_switch acc2; jq -r '.oauthAccount.emailAddress' ~/.claude.json
 
 - **`claude-accX` prompts for login:** that bundle's token expired. Run `claude-accX` →
   `/login` once. The next switch auto-saves the new token into its bundle.
+- **A bundle's tokens are empty (`accessToken`/`refreshToken` length 0, `expiresAt` 0):** it
+  was corrupted by an auto-save that ran while the live credentials were blank. There's no
+  recovery — that account must `/login` again. The `__claude_save` guard above now prevents
+  this from recurring. Check bundle health:
+  `jq '(.claudeAiOauth//.)|{a:(.accessToken|length),r:(.refreshToken|length),exp:.expiresAt}' ~/.claude/.accounts/<name>.credentials.json`
 - **OAuth callback hangs (WARP/VPN/SSH):** during login, copy the URL Claude prints, authorize
   in a browser (Incognito signed into the right account), paste the auth code into the CLI.
 - **Aliases missing in a new terminal:** confirm `~/.bash_aliases` is sourced from
