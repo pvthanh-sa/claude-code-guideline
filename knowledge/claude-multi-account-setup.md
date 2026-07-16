@@ -111,10 +111,23 @@ __claude_save() {      # persist the current live token + identity into one acco
   jq '.oauthAccount' "$HOME/.claude.json" > "$base/$acc.oauthAccount.json" 2>/dev/null
   chmod 600 "$base/$acc.credentials.json" 2>/dev/null
 }
+__claude_bundle_ok() {  # usable bundle = non-empty access + refresh tokens
+  local f="$1" at rt
+  at=$(jq -r '(.claudeAiOauth.accessToken // .accessToken // "")' "$f" 2>/dev/null)
+  rt=$(jq -r '(.claudeAiOauth.refreshToken // .refreshToken // "")' "$f" 2>/dev/null)
+  [ -n "$at" ] && [ -n "$rt" ]
+}
 __claude_switch() {
   local acc="$1" base="$HOME/.claude/.accounts"
   local cred="$base/$acc.credentials.json" oauth="$base/$acc.oauthAccount.json"
   if [ ! -f "$cred" ] || [ ! -f "$oauth" ]; then echo "claude: unknown account '$acc'" >&2; return 1; fi
+  # GUARD: refuse to LOAD a broken (empty-token) bundle — loading it would wipe the
+  # live credentials and knock out the running account. Abort with zero side effects.
+  if ! __claude_bundle_ok "$cred"; then
+    echo "claude: bundle '$acc' has no valid token — NOT switching (current account kept)." >&2
+    echo "  Fix: run 'claude' -> /login as '$acc' -> exit -> 'source ~/.bash_aliases && __claude_save $acc'" >&2
+    return 1
+  fi
   local cur; cur="$(__claude_current)"                       # 1) auto-save the outgoing account
   [ -n "$cur" ] && [ "$cur" != "$acc" ] && __claude_save "$cur"
   cp -f "$cred" "$HOME/.claude/.credentials.json" || return 1  # 2) load the target account
