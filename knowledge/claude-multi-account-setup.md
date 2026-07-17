@@ -38,9 +38,16 @@ account. Rename freely (the bundle filenames and aliases must match).
 4. **Sessions are directory-scoped, not account-scoped** (Claude Code docs + tested: acc2
    resumed acc1's session by id). So switching **never loses or duplicates** data. Tested
    across 5 switch rounds: every session/memory/history file stayed byte-identical.
-5. **One account at a time.** They share one credentials file, so don't run two accounts in
-   two terminals at once — switching in terminal B changes the token under the session
-   running in terminal A.
+5. **One account at a time — and ideally one tab at a time.** All sessions share one
+   `~/.claude/.credentials.json`. Two risks:
+   - *Switching accounts* in terminal B changes the token under the session running in A.
+   - *Two tabs of the SAME account* running concurrently: OAuth refresh-tokens rotate, so
+     when one tab refreshes it invalidates the token the other tab still holds → the other
+     eventually hits "Login expired". This is inherent to OAuth token rotation over a shared
+     credentials file, NOT a script bug — no wrapper can fully prevent it. If you must run
+     several tabs of one account, expect an occasional `/login`.
+   The switch function is a **no-op when the target account is already active**, so launching
+   a second tab with `claude-<acc>` does not itself clobber a freshly logged-in token.
 6. **The OAuth callback may be blocked** by a VPN / Cloudflare WARP / Warp terminal / SSH →
    use the paste-code flow (Claude prints a URL; open it in the browser signed into the right
    account; paste the returned auth code back into the CLI).
@@ -121,6 +128,11 @@ __claude_switch() {
   local acc="$1" base="$HOME/.claude/.accounts"
   local cred="$base/$acc.credentials.json" oauth="$base/$acc.oauthAccount.json"
   if [ ! -f "$cred" ] || [ ! -f "$oauth" ]; then echo "claude: unknown account '$acc'" >&2; return 1; fi
+  # NO-OP GUARD: already on this account -> do NOTHING. Live creds may hold a freshly
+  # refreshed / re-logged-in token; copying a (possibly stale) bundle over it downgrades
+  # it -> "Login expired". (This broke opening a 2nd tab of the same account.)
+  local cur; cur="$(__claude_current)"
+  [ "$cur" = "$acc" ] && return 0
   # GUARD: refuse to LOAD a broken (empty-token) bundle — loading it would wipe the
   # live credentials and knock out the running account. Abort with zero side effects.
   if ! __claude_bundle_ok "$cred"; then
@@ -128,8 +140,7 @@ __claude_switch() {
     echo "  Fix: run 'claude' -> /login as '$acc' -> exit -> 'source ~/.bash_aliases && __claude_save $acc'" >&2
     return 1
   fi
-  local cur; cur="$(__claude_current)"                       # 1) auto-save the outgoing account
-  [ -n "$cur" ] && [ "$cur" != "$acc" ] && __claude_save "$cur"
+  [ -n "$cur" ] && __claude_save "$cur"                      # 1) auto-save the outgoing account
   cp -f "$cred" "$HOME/.claude/.credentials.json" || return 1  # 2) load the target account
   local tmp; tmp="$(mktemp)"
   if jq --slurpfile o "$oauth" '.oauthAccount = $o[0]' "$HOME/.claude.json" > "$tmp"; then
