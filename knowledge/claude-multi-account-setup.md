@@ -48,6 +48,10 @@ account. Rename freely (the bundle filenames and aliases must match).
      several tabs of one account, expect an occasional `/login`.
    The switch function is a **no-op when the target account is already active**, so launching
    a second tab with `claude-<acc>` does not itself clobber a freshly logged-in token.
+   It also **hard-blocks switching to a DIFFERENT account while any claude session is running**
+   (detected via alive PIDs in `~/.claude/sessions/*.json`): you get "cannot switch — close all
+   running claude tabs first" instead of silently breaking the running session. To switch
+   accounts, close every claude tab (terminal + VS Code) first.
 6. **The OAuth callback may be blocked** by a VPN / Cloudflare WARP / Warp terminal / SSH →
    use the paste-code flow (Claude prints a URL; open it in the browser signed into the right
    account; paste the returned auth code back into the CLI).
@@ -124,6 +128,14 @@ __claude_bundle_ok() {  # usable bundle = non-empty access + refresh tokens
   rt=$(jq -r '(.claudeAiOauth.refreshToken // .refreshToken // "")' "$f" 2>/dev/null)
   [ -n "$at" ] && [ -n "$rt" ]
 }
+__claude_live_pids() {  # PIDs of running claude sessions (alive), from ~/.claude/sessions/*.json
+  local f pid
+  for f in "$HOME/.claude/sessions/"*.json; do
+    [ -e "$f" ] || continue
+    pid=$(jq -r '.pid // empty' "$f" 2>/dev/null)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
+  done
+}
 __claude_switch() {
   local acc="$1" base="$HOME/.claude/.accounts"
   local cred="$base/$acc.credentials.json" oauth="$base/$acc.oauthAccount.json"
@@ -133,6 +145,14 @@ __claude_switch() {
   # it -> "Login expired". (This broke opening a 2nd tab of the same account.)
   local cur; cur="$(__claude_current)"
   [ "$cur" = "$acc" ] && return 0
+  # BLOCK: refuse to switch to a DIFFERENT account while claude session(s) are running —
+  # the swap would pull the shared credentials out from under them ("Login expired").
+  local live; live="$(__claude_live_pids)"
+  if [ -n "$live" ]; then
+    echo "claude: cannot switch to '$acc' — $(printf '%s\n' "$live" | wc -l | tr -d ' ') claude session(s) still running on '${cur:-current account}'." >&2
+    echo "  Close ALL running claude tabs (terminal + VS Code), then retry." >&2
+    return 1
+  fi
   # GUARD: refuse to LOAD a broken (empty-token) bundle — loading it would wipe the
   # live credentials and knock out the running account. Abort with zero side effects.
   if ! __claude_bundle_ok "$cred"; then
