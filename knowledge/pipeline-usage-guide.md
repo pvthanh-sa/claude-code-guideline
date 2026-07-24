@@ -262,13 +262,17 @@ All `ok`? You're ready for Stage 1. Any `FAIL` points at the section to fix.
 | 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`                    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
 | 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`                       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
 | 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md`          | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
-| 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` + auto-exported `infra.png` + `README.md` | **G5** | doc accurate? diagram correct?     | review doc + PNG, commit                        |
+| 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` (one, or split into `infra-<slug>.drawio` views) + auto-exported PNG(s) + `README.md` | **G5** | doc accurate? diagram(s) correct + readable? | review doc + PNG(s), commit                     |
 | 6   | `/secret-scan`                | scan result + guardrail (hook + CI)                     | **G6** | clean? real leak to rotate?        | `git push` (hook + CI re-scan)                  |
 
 **Safety invariant:** `.claude/settings.json` (**copied** into the project by `/init-project` if the
-project has none — not generated per-stack) hard-denies `terraform destroy` and
-`terraform apply -auto-approve`. A plain `terraform apply tfplan` is **not** in the allow list, so
-it **prompts for permission** before running → you are the only one who presses "apply".
+project has none — not generated per-stack) hard-denies `terraform destroy`, `terraform apply
+-auto-approve`, and the common destructive `aws … delete/terminate/revoke` verbs (deny wins over
+allow). A plain `terraform apply tfplan` is **not** in the allow list, so it **prompts for permission**
+before running → you are the only one who presses "apply". It **does** auto-allow read-only reads
+(scanners, `terraform plan/validate`, and a broad AWS `describe*`/`list*`/safe-`get*` bundle) so
+routine review/inspection doesn't prompt-churn — for a full `Bash(aws *)` bypass during `--live`, pair
+it with a read-only profile (Step 4 "review the live stack").
 
 ---
 
@@ -642,10 +646,12 @@ or the plan). Treat this as part of Step 3, not an afterthought:
 ```
 /infra-review environments/dev-care-hub            # normal re-review: single pass + auto baseline
 /infra-review environments/dev-care-hub --deep     # first review / deep audit: loop-until-dry
+/infra-review environments/dev-care-hub --live     # also cross-check the DEPLOYED stack (read-only)
 ```
 
 Flags (you rarely need more than `--deep`):
 - `--deep` — loop the finders until 2 dry rounds (one AI pass isn't exhaustive). Use on the **first review** + occasional deep audits.
+- `--live` — **optional**; after the code/plan review, add a **read-only** pass against the *deployed* AWS stack (drift, resources created outside Terraform, live posture). Only useful once the env is applied — see below.
 - `--baseline <report>` — force a specific prior report as the comparison (default: auto-detects the latest `docs/reviews/<env>-*.md`).
 - `--no-baseline` — review with **no** comparison (drops the RESOLVED/NEW/STILL-OPEN labels).
 - `--note "<what changed>"` — record what you just changed: it's written into the report **and** points the finders at that change (still full-scan). Use it on a re-review after editing the IaC.
@@ -657,6 +663,56 @@ Flags (you rarely need more than `--deep`):
 3. **Baseline labels** (on a re-review): the skill feeds the previous report as the baseline, so each finding is tagged **[RESOLVED] / [NEW] / [STILL-OPEN]** and the report leads with *"vs last run: N resolved, K new — regression: no"*. The first run has no baseline.
 
 > Findings the spec lists under **Accepted risks** (`docs/specs/*.spec.md`) are still reported but **excluded** from the go/no-go counts — that's how a conscious decision stops blocking. Real defects stay **[STILL-OPEN]** every run until fixed.
+
+### Optional: review the live stack (`--live`)
+
+The 3 finders read **code + plan** — they can't see what actually got applied. Once the env is
+**deployed** and you want the review to also check reality, add `--live`. It runs a **read-only** pass
+that catches what static review structurally can't:
+
+- **Drift** — `terraform plan -refresh-only` diff: console/CLI changes that aren't in code.
+- **Resources outside Terraform** — `list-*` each service, diff against `terraform state list` (this
+  is how the Cognito lab's stray aoss collection would have been caught earlier).
+- **Live-only posture** — actual S3 public-access blocks, bucket/API-GW/aoss resource policies, real
+  SG ingress, encryption state, and the IAM actually attached (also feeds the post-apply Access
+  Analyzer step — Step 3 §5).
+
+Live-only issues are tagged `[LIVE]` in a **"Live stack check"** section of the report. `--live` is
+optional — skip it when the stack isn't applied yet or you're reviewing pure code. If creds are
+missing or a read is denied it degrades gracefully to a code/plan review.
+
+#### Permission prompts — you do **not** set anything up per review
+
+A live review fires many AWS reads, so the natural worry is "must I edit `settings.json` and export a
+profile every time?" **No.** The two pieces are already in place from setup — per review you just type
+`/infra-review <env> --live`:
+
+**Set once (already done):**
+1. **The read-only allow bundle ships in `.claude/settings.json`** and `/init-project` copies it into
+   every project. It auto-approves read-only verbs (`terraform plan/validate`, scanners, and a broad
+   AWS `describe*`/`list*`/safe-`get*` set), so the common live reads don't prompt. You never touch it
+   per review.
+2. **The read-only profile lives in `.mcp.json`** — the same one you already configure after
+   `/init-project` for the advisory MCP servers, per [`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md). Its
+   IAM boundary is read-only by construction (denies `kms:Decrypt`, `GetSecretValue`, `dynamodb` data
+   reads, `s3:GetObject`, all mutations). Nothing extra to set up for `--live`.
+
+**Per review:** nothing. The skill **reads the profile out of `.mcp.json` itself** and passes it as
+`--profile <that>` on every live-read command — no `export`, no `settings.json` edit. Because that
+identity can't mutate anything, the reads go as **wide** as needed with no risk (you never narrow
+*which* reads run just to dodge prompts). The skill will **not** use the backend/apply profile
+(`profile` in `backend-<env>.hcl`, e.g. `dev01-mfa` — full-access).
+
+**Optional, if you want literally zero prompts** even for a read outside the shipped bundle: add one
+line to `.claude/settings.local.json` (personal, gitignored — not the shared `settings.json`):
+```jsonc
+{ "permissions": { "allow": ["Bash(aws *)"] } }   // safe ONLY because --live runs under the read-only .mcp profile
+```
+`deny` always wins over `allow`, so the `terraform destroy` / `apply -auto-approve` guard still holds.
+
+> ⚠️ **Never `--dangerously-skip-permissions`** for this — it also drops the destroy/apply deny guard.
+> And `Bash(aws *)` is only safe because the live reads run under the read-only profile; do **not** add
+> it globally if you routinely run `aws` under a full-access profile in the same project.
 
 ### 🚪 GATE G4 — you decide
 
@@ -712,27 +768,39 @@ diagram, so the team has one source of truth that stays in sync with the code.
    and reads the latest **`docs/reviews/<env>-*.md`** to fill the security-posture section (§7).
 2. Writes **`docs/infrastructure.md`** (8 sections, comprehension-first: overview → diagram (+ numbered
    key) → **how it works** walkthrough → components → network → environments → security → cost).
-3. Hand-authors **`docs/diagrams/infra.drawio`** — one combined diagram with AWS Cloud / Region /
-   VPC / subnet groups (proven `mxgraph.aws4` styles) — then **gates it through the shipped
-   `validate-drawio.py`**: every stencil name checked against the AWS4 catalog (a wrong name
-   renders as a blank icon with no error), plus overlap/bounds geometry lint and dangling-edge
-   lint. Fixes and re-runs (caps at 5 attempts, then stops and reports the residual errors).
-4. **Exports `docs/diagrams/infra.png`** with the drawio CLI (headless-safe fallback chain), then
-   **looks at the PNG itself** (vision check: blank icons, clipped/colliding labels, mis-attached
-   edges) and fixes the diagram — up to 3 rounds.
+3. Hand-authors the diagram(s) under **`docs/diagrams/`** with AWS Cloud / Region / VPC / subnet
+   groups (proven `mxgraph.aws4` styles). **Usually one combined `infra.drawio`** — but if a single
+   diagram would overlap into an unreadable tangle, Claude **decides per project** to split it into
+   focused views (`infra.drawio` = primary overview + `infra-<slug>.drawio` siblings; the *axis* of the
+   split depends on your architecture — there's no fixed set of views). Each diagram is **gated through
+   the shipped `validate-drawio.py`**: every stencil name checked against the AWS4 catalog (a wrong name
+   renders as a blank icon with no error), plus overlap/bounds geometry lint and dangling-edge lint.
+   Fixes and re-runs (caps at 5 attempts per diagram, then stops and reports the residual errors).
+4. **Exports each diagram to PNG** (`infra.png`, and any `infra-<slug>.png`) with the drawio CLI
+   (headless-safe fallback chain), then **looks at each PNG itself** (vision check: blank icons,
+   clipped/colliding labels, mis-attached edges — and, for a split, that each view actually reads
+   cleanly) and fixes it — up to 3 rounds per diagram.
 5. Only if PNG export is **impossible** on this machine (no drawio CLI / no display): embeds the
    temporary Mermaid mirror in §2 + manual-export instructions, as before.
-6. **Coverage check:** confirms every `module` in `main.tf` appears as a node in the diagram (and a
-   row in §4) — flags anything drawn-but-missing before you review.
+6. **Coverage check:** confirms every `module` in `main.tf` appears as a node in **at least one**
+   diagram (union across all views when split) + a row in §4 — flags anything drawn-but-missing.
 7. Creates/refreshes a top-level **`README.md`** — the public-facing entry point (overview, layout,
    prerequisites, deploy steps, CI gates, links to the docs). Won't clobber an existing README.
+
+> **Missing icon? Claude draws a labeled placeholder box — it never omits the component.** The AWS4
+> stencil catalog is nearly complete, but if a service has no icon, Claude draws it as a **dashed box
+> labeled with the service name** (never drops it, merges it, or "draws around" it — that would hide a
+> real resource). You'll spot the dashed boxes at review and swap in the right icon; the diagram stays
+> *complete and honest* meanwhile. Rare in practice.
 
 ### 3. 🚪 GATE G5 — you approve
 
 Claude **STOPS**. Your job:
 
-- [ ] Open `docs/diagrams/infra.png` — is the architecture right? (validator + vision check already
-      passed; `infra.drawio` is the editable source if you want layout tweaks)
+- [ ] Open `docs/diagrams/infra.png` (**+ any `infra-<slug>.png`** if Claude split the diagram) — is
+      the architecture right and each view readable? (validator + vision check already passed; the
+      `.drawio` files are the editable sources if you want layout tweaks; any dashed labeled box is a
+      no-stencil service you can swap an icon into)
 - [ ] Review `docs/infrastructure.md` (accurate? gaps marked TODO?). Commit when you're ready.
 - [ ] **Fallback only** (Claude reported PNG export failed): open the `.drawio`, compare with the
       Mermaid block in §2, export `infra.png` manually, delete the Mermaid block.
@@ -856,6 +924,7 @@ terraform apply tfplan                                     # you press it
 bash scripts/e2e-test.sh                                   # functional verify (poll, negative tests, self-cleanup — Step 3 §5)
 #   lab teardown when done: terraform plan -destroy -out=tfplan-destroy && terraform apply tfplan-destroy
 /infra-review environments/dev-care-hub                    # G4: parallel review (add --deep = loop-until-dry)
+#   add --live to also check the DEPLOYED stack read-only (drift + live posture; read-only profile → no prompts)
 /infra-document environments/dev-care-hub                  # G5: living doc + validated drawio + auto-exported PNG
 #   → review doc + infra.png, commit docs/  (fallback: export PNG + delete Mermaid manually)
 /secret-scan --setup                                       # G6: install guardrail (once per project)
@@ -888,12 +957,14 @@ bash scripts/e2e-test.sh                                   # functional verify (
 
 - [ ] No Critical left · [ ] High handled (or accepted with reason) · [ ] chosen cost savings
       applied · [ ] re-review clean · [ ] apply + commit
+- [ ] deployed already? optionally `--live` (read-only drift + live-posture check; run under a
+      read-only profile to skip prompts safely — Step 4 "review the live stack")
 
 **G5 (after /infra-document)**
 
-- [ ] `infra.png` matches the architecture (auto-exported + vision-checked) ·
-      [ ] `infrastructure.md` accurate (gaps marked TODO) · [ ] committed `docs/` ·
-      [ ] (fallback only) exported `infra.png` manually + deleted the Mermaid block
+- [ ] `infra.png` (+ any `infra-<slug>.png`) matches the architecture and each view is readable
+      (auto-exported + vision-checked) · [ ] `infrastructure.md` accurate (gaps marked TODO) ·
+      [ ] committed `docs/` · [ ] (fallback only) exported `infra.png` manually + deleted the Mermaid block
 
 **G6 (after /secret-scan)**
 
@@ -921,6 +992,7 @@ bash scripts/e2e-test.sh                                   # functional verify (
 | Stage 5 reports "PNG export failed"                                   | No drawio CLI / no X server / Electron sandbox error. Install draw.io desktop (§1.0); headless machines: `apt install xvfb` (the skill auto-retries with `xvfb-run -a` and `--no-sandbox`). Worst case: export manually from draw.io — the doc keeps the Mermaid mirror until you do.       |
 | Applied fine, but events/records aren't flowing                       | Usually eventual consistency, not a bug: CloudTrail→EventBridge takes 20 s–3 min; a new DynamoDB-stream mapping takes ~1 min to activate (and `LATEST` **skips** writes made before activation — prefer `TRIM_HORIZON` with idempotent consumers). Functional tests must poll with a timeout, never fail fast. |
 | Long pause mid-run and the lab is burning money                       | Idle-floor services (aoss ≈$6/day, NAT, ALB, provisioned RDS) bill hourly while they exist. `terraform plan -destroy` → `apply tfplan-destroy`, resume later — state + code make the rebuild one apply (Step 3 §5).                                                                          |
+| `/infra-review --live` still prompts on some AWS reads                 | The shipped `.claude/settings.json` bundle auto-approves the common read verbs, but a read outside it (or a stale copied `settings.json`) will prompt. Quick fix: add `"Bash(aws *)"` to `.claude/settings.local.json` (personal, gitignored) — safe because `--live` runs under the read-only `.mcp.json` profile. Never use `--dangerously-skip-permissions` (drops the destroy/apply guard). If it prompts because `.mcp.json` has **no** AWS profile, configure the read-only MCP profile ([`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md)) first. See Step 4 "review the live stack". |
 
 ---
 

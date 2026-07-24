@@ -426,7 +426,9 @@ After completing all phases, print a summary:
 
 ### Next steps:
 1. Fill in placeholders in .mcp.json:
-   - <your-aws-profile>  →  e.g., my-project-dev
+   - <your-aws-profile>  →  your READ-ONLY MCP profile (e.g. cretra-mcp / ClaudeMCPReadOnly, set up
+     per knowledge/aws-iam-mcp-setup.md) — NOT your backend/apply profile (the full-access one you
+     terraform apply with). This same profile is what /infra-review --live reuses for live reads.
    - <your-aws-region>   →  e.g., ap-southeast-1
    [list other placeholders relevant to what was included]
 

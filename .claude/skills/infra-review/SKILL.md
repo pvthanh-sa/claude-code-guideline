@@ -1,9 +1,9 @@
 ---
 name: infra-review
-description: 'Stage 4 of the DevOps pipeline. Run a parallel security + infra-best-practice + cost review of a Terraform environment via the infra-review Workflow, save the report to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go report — baseline-aware on re-reviews, labeling each finding RESOLVED/NEW/STILL-OPEN vs the prior report — and STOP at human gate G4. Never edits code or applies without explicit approval.'
+description: 'Stage 4 of the DevOps pipeline. Run a parallel security + infra-best-practice + cost review of a Terraform environment via the infra-review Workflow, save the report to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go report — baseline-aware on re-reviews, labeling each finding RESOLVED/NEW/STILL-OPEN vs the prior report — optionally cross-checking the deployed stack read-only with --live (drift + live-only findings), and STOP at human gate G4. Never edits code or applies without explicit approval.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Workflow
-argument-hint: '[target-dir] [--deep] [--baseline <prior-report> | --no-baseline] [--note "<what changed>"]'
+argument-hint: '[target-dir] [--deep] [--live] [--baseline <prior-report> | --no-baseline] [--note "<what changed>"]'
 ---
 
 # Infra Review — Stage 4 (Review gate)
@@ -46,6 +46,35 @@ report, gone now), **STILL-OPEN** (in both), or **NEW** (first seen this run) �
   change and its blast radius. Use it so the report captures the *intent* of the change, not only the
   findings delta (baseline alone sees which findings changed, not what code you touched). If the
   operator typed `--note "<text>"` (or said it in chat at invocation), parse it out and pass `args.note`.
+
+**`--live` flag (optional — review the deployed stack, not just the code).** The three finders read
+**code + plan**; they cannot see what actually got applied. When the env is deployed and you want the
+review to also check reality, pass `--live`: the skill adds a **read-only** live-inspection pass (see
+Phase 1.5) that catches what static review structurally can't — **drift** (console/CLI changes not in
+code), resources created **outside** Terraform, and posture that's only observable live (actual
+public-access blocks, encryption state, attached IAM, SG ingress). Skip it (default) when the stack
+isn't applied yet or you're reviewing pure code.
+
+- **Zero per-review setup — the skill resolves the profile itself.** It reads the AWS profile already
+  configured in the project's **`.mcp.json`** (the advisory-MCP identity) and passes it as **`--profile
+  <that>` on every live-read command** (see Phase 1.5). A CLI flag — not an `export` (shell state
+  doesn't persist between calls) and not an inline `AWS_PROFILE=… aws …` (that would stop the command
+  matching the read-only allowlist and re-trigger prompts). The operator does **not** export anything
+  or edit `settings.json` before each run.
+- **Coverage first — do not pre-narrow the command set.** Investigate the deployed stack as widely as
+  the resources demand; run whatever `describe-*`/`list-*`/`get-*` reads across whatever services are
+  in play give a complete posture. **The safety boundary is the IAM identity, not a hand-picked verb
+  list**: that `.mcp.json` profile is **read-only by construction** — it's set up per
+  `knowledge/aws-iam-mcp-setup.md`, whose boundary policy already **denies** the dangerous "reads"
+  (`kms:Decrypt`, `secretsmanager:GetSecretValue`, `ssm:GetParameter*`, `dynamodb` data reads,
+  `s3:GetObject`, `lambda:InvokeFunction`, all mutations). So you can go wide safely and never need to
+  hand-trim verbs. **Never** use the full-access backend/apply profile (the `profile` in
+  `backend-<env>.hcl`) for this pass.
+- The pass **never mutates** and never runs `apply`/`destroy`. If `.mcp.json` has no AWS profile, or a
+  read is denied / creds are missing, note it and continue — `--live` degrades to a code/plan review,
+  never blocks. If the resolved profile turns out to be the same as the backend/apply profile (i.e. not
+  a read-only identity), warn and recommend configuring the read-only MCP profile per
+  `aws-iam-mcp-setup.md` before relying on `--live`.
 
 **Cadence (which mode when):**
 
@@ -100,6 +129,58 @@ The user can watch live progress with `/workflows`.
 > Note: the three agent types must exist in the current project's `.claude/agents/`
 > (init-project copies them for AWS/security projects). If missing, use fallback 2.
 
+## Phase 1.5 (optional, `--live`): read-only live-stack inspection
+
+Run **only if `--live` was given** and the env is applied. This is a **read-only** pass — it never
+mutates and never runs `terraform apply`/`destroy`.
+
+**First, resolve the read-only profile from `.mcp.json`** (do this once; reuse it on every read below):
+
+```bash
+# read the AWS profile the advisory MCP servers use (read-only by construction — see aws-iam-mcp-setup.md)
+RO_PROFILE="$(python3 - <<'PY' 2>/dev/null
+import json,glob
+for f in ('.mcp.json',) + tuple(glob.glob('*/.mcp.json')):
+    try:
+        s=json.load(open(f)).get('mcpServers',{})
+        for c in s.values():
+            p=(c or {}).get('env',{}).get('AWS_PROFILE')
+            if p: print(p); raise SystemExit
+    except Exception: pass
+PY
+)"
+echo "${RO_PROFILE:-<none — .mcp.json has no AWS profile; --live will use session default creds>}"
+```
+
+Then pass **`--profile "$RO_PROFILE"`** on **every** AWS read below (CLI flag → the command still starts
+with `aws …` so it matches the read-only allowlist and won't prompt, and it overrides any exported
+apply profile). **Never** use the backend/apply profile (`profile` in `backend-<env>.hcl`) — it's
+full-access; the read-only MCP identity is what lets the reads go wide without risk (its IAM boundary
+denies `kms:Decrypt`, `GetSecretValue`, `dynamodb` data reads, `s3:GetObject`, and all mutations).
+
+1. **Drift** — from the env dir, `terraform plan -lock=false -refresh-only -no-color` (or a normal
+   `plan`): a non-empty diff after a clean apply means the live stack drifted from code (out-of-band
+   console/CLI change). Capture the drifted resources. (`terraform` uses the backend profile, not
+   `$RO_PROFILE` — that's correct; only the raw `aws` reads below take `--profile`.)
+2. **Live posture snapshot** — investigate **every** resource in `main.tf` (and its blast radius) with
+   whatever read-only AWS calls give a complete picture; **do not restrict yourself to a fixed verb
+   list** — go as wide as the stack needs. The IAM boundary (`$RO_PROFILE`) is what keeps this safe, so
+   coverage can be exhaustive. Pass `--profile "$RO_PROFILE"` on each. Typical angles (extend freely per
+   service in scope):
+   - public exposure: `aws s3api get-public-access-block --profile "$RO_PROFILE"`, `get-bucket-policy`; `aws ec2 describe-security-groups --profile "$RO_PROFILE"` (0.0.0.0/0 ingress?); resource policies / auth on API Gateway, aoss data-access policies, etc.
+   - encryption on: `aws s3api get-bucket-encryption`, `aws rds describe-db-instances`/`describe-db-clusters` (StorageEncrypted), `aws dynamodb describe-table` (SSEDescription), KMS key policies — each `--profile "$RO_PROFILE"`
+   - identity as written: `aws iam get-role-policy` / `get-policy-version` / `list-attached-role-policies` for every role the stack created (also feeds post-apply Access Analyzer — Guide Step 3 §5)
+   - resources **outside** Terraform: `list-*` each service the stack uses (`aws lambda list-functions`, `aws cognito-idp list-user-pools`, …) and diff against `terraform state list`.
+
+   No need to hand-avoid "dangerous" reads — `$RO_PROFILE`'s IAM boundary already denies the
+   value/data-returning ones (`get-secret-value`, `kms decrypt`, `dynamodb get-item`/`scan`,
+   `s3:GetObject`, `admin-get-user`), so they'd `AccessDenied` rather than leak. Read as wide as you need.
+3. **Fold into the review** — summarize drift + any live-only issue as findings (severity like any
+   other) and add a **"Live stack check"** section to the report (Phase 2). A live-only issue with no
+   code counterpart is tagged `[LIVE]`; if the env is clean and matches code, say so
+   ("live matches code, no drift"). If creds are missing or a read is denied, note it and continue —
+   `--live` degrades to a code/plan review, never blocks.
+
 ## Phase 2: Save + present the report (G4)
 
 First **persist** the report (so Stage 5 `/infra-document` and any future session can read it),
@@ -133,6 +214,10 @@ _Saved: docs/reviews/<env>-<date>.md_
 ### Must fix before apply (Critical/High):
 1. [severity][source][wa-category][NEW|STILL-OPEN] title — location → remediation
 ...
+
+### Live stack check (only when `--live` was given — from Phase 1.5):
+- Drift: <none / list of drifted resources> · Outside Terraform: <none / list>
+- [severity][LIVE] live-only finding — resource → remediation   (or: "live matches code, no drift")
 
 ### Resolved since last review (only with a baseline — from changeSinceBaseline.resolved):
 - [severity] title — location  ✓ no longer found

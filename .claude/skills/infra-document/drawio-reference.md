@@ -15,7 +15,9 @@ patterns; only change `id`, `value`, `parent`, and `mxGeometry`.
 6. Keep ids human-readable (`vpc`, `ecs_api`, `aurora`) so edges are easy to wire.
 7. **Only names in `aws4-stencils.json` (same dir) render.** `validate-drawio.py` enforces this —
    an unknown `resIcon`/`grIcon` draws a **blank glyph with no error**. When a service has no
-   catalog entry, use the labeled fallback box (§Special shapes); the validator always allows it.
+   catalog entry, draw it as the **labeled fallback box** (§Special shapes) — **never omit or simplify
+   the component to avoid a missing icon**; the validator always allows the box, and the operator swaps
+   in the right icon later.
 
 ## Group containers
 Same style string for every group — only `grIcon`, colors, and `value` change. Keep the long
@@ -79,10 +81,15 @@ sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1
 - **IAM:** `resIcon=mxgraph.aws4.identity_and_access_management` (NOT `…_iam` — that name doesn't
   exist and renders blank); a role can also use the dedicated stencil `shape=mxgraph.aws4.role`.
 - **User/actor:** `shape=mxgraph.aws4.user;fillColor=#232F3E` (size `60×78`)
-- If unsure of an exact `resIcon` name, grep **`aws4-stencils.json`** or fall back to a labeled
-  generic resource box rather than guessing — a wrong stencil name renders as an empty box
-  (`validate-drawio.py` flags unknown names and suggests the closest match). A clean fallback:
-  `rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#232F3E;fontColor=#232F3E`.
+- If unsure of an exact `resIcon` name, grep **`aws4-stencils.json`** first (`validate-drawio.py` flags
+  unknown names and suggests the closest match). If the service genuinely has **no** stencil, fall back
+  to a **labeled box** — never guess a stencil name (renders blank) and **never omit the component**.
+  Clean fallback style (validator always allows it), with the **service name as the label** and a
+  dashed border so it's easy to find and swap later:
+  `rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#FFFFFF;strokeColor=#232F3E;fontColor=#232F3E`.
+  **Rule: a missing icon is drawn as a labeled placeholder box, not skipped.** Dropping, merging, or
+  "drawing around" a real resource to avoid a missing icon makes the diagram wrong — the dashed box +
+  label is self-evident at review, so the operator swaps in the right icon (no need to enumerate them).
 
 ## Gotchas (silent-rendering mistakes)
 - **Unknown stencil = blank glyph, no error.** Verified empirically: an invalid `resIcon` renders
@@ -144,3 +151,32 @@ edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;f
 - Put public-facing resources in the **public subnet** group, app/data in **private subnet**.
 - Cross-cutting services (KMS, Secrets Manager, CloudWatch, WAF) can sit in the account/region band, connected by dashed edges.
 - Don't overlap icons; give each ~120px horizontal spacing.
+
+## Splitting into multiple diagrams (when one is too dense)
+
+**The *decision* — whether to split and along which axis — lives in the skill (Phase 3) and is a
+per-project judgment; there is no fixed set of views.** This section is only the *drawing* mechanics
+once you've decided to split. The goal is that each file is a clean, self-contained picture — not a
+slice that only makes sense next to the others.
+
+- **Each `.drawio` is a complete standalone diagram** — its own full skeleton (`mxGraphModel` → AWS
+  Cloud → Region → VPC → subnets), its own title, its own legend. A reader opening just one PNG must
+  understand it without the others.
+- **Redraw the shared anchors as light context.** The resources that every view touches (VPC, the
+  compute host, the DB, the ALB) appear in each diagram so it stands alone — draw them with the normal
+  stencils but keep them visually secondary (fewer/dashed edges), then **overlay only that view's
+  plane** (its own nodes + its own numbered edges). Repetition of anchors across views is intended, not
+  duplication to avoid.
+- **Number edges *within* each view** — each diagram restarts its own `① ② ③` for the path it shows
+  (the overview's request path, the deploy view's CI/CD path, etc.). Don't try to share one numbering
+  across files.
+- **Title names the concern; legend cross-links the siblings.** Put the view's scope in the title
+  (`… · DEPLOY & SUPPLY CHAIN`) and, in the legend, point to the other PNGs by filename
+  (`Detail views: infra-deploy.png · infra-observe.png`; `see infra.png for the request path`) so the
+  set reads as one document.
+- **Filenames:** `infra.drawio`/`infra.png` is the canonical primary (the overview). Siblings are
+  `infra-<slug>.drawio`/`infra-<slug>.png` where `<slug>` names the view (`infra-deploy`,
+  `infra-observe`, `infra-data`, `infra-network`, … — whatever your chosen split is).
+- Validate and vision-check **every** file (the skill loops over `infra*.drawio`). If a split view is
+  *still* an overlapping tangle, the split axis was wrong — reconsider the axis rather than shipping a
+  dense picture.
