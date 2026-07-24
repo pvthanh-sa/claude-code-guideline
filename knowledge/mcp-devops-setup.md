@@ -115,7 +115,7 @@ Always setup regardless of project. These cover monitoring, security, cost, and 
 
 | #   | Name             | Package                                        | Purpose                                          | Link                                                                               |
 | --- | ---------------- | ---------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| 1   | AWS API          | `awslabs.aws-api-mcp-server`                   | Swiss knife — broad AWS API access               | [Docs](https://awslabs.github.io/mcp/servers/aws-api-mcp-server)                   |
+| 1   | AWS MCP Server   | `mcp-proxy-for-aws` (managed remote — **replaces** `awslabs.aws-api-mcp-server`) | Swiss knife — broad AWS API access               | [Migration](https://github.com/awslabs/mcp/blob/main/src/aws-api-mcp-server/MIGRATION.md) |
 | 2   | AWS Knowledge    | `awslabs.aws-knowledge-mcp-server`             | AWS docs + code samples + official content       | [Docs](https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server)             |
 | 3   | CloudWatch       | `awslabs.cloudwatch-mcp-server`                | Metrics, alarms, logs analysis                   | [Docs](https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server)                |
 | 4   | CloudTrail       | `awslabs.cloudtrail-mcp-server`                | API audit, security investigation                | [Docs](https://awslabs.github.io/mcp/servers/cloudtrail-mcp-server)                |
@@ -124,13 +124,29 @@ Always setup regardless of project. These cover monitoring, security, cost, and 
 | 7   | Billing & Cost   | `awslabs.billing-cost-management-mcp-server`   | Budgets, anomaly detection, RI/SP, Cost Explorer | [Docs](https://awslabs.github.io/mcp/servers/billing-cost-management-mcp-server)   |
 | 8   | Pricing          | `awslabs.aws-pricing-mcp-server`               | Pre-deployment cost estimation                   | [Docs](https://awslabs.github.io/mcp/servers/aws-pricing-mcp-server)               |
 
+> **Migration note (row 1):** `awslabs.aws-api-mcp-server` (self-hosted) is being superseded by the
+> **AWS MCP Server** = `mcp-proxy-for-aws`, a thin client that proxies to the AWS-managed remote
+> endpoint `https://aws-mcp.us-east-1.api.aws/mcp`. Differences that matter here: **no `env` block** —
+> profile via `--profile`, target region via `--metadata AWS_REGION=<region>`; **signing region is
+> auto-inferred from the endpoint host** (`us-east-1`), so you don't pass `--region`; read-only is a
+> `--read-only` flag (client-side tool filtering) **on top of** the IAM read-only boundary in
+> [`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md), which still governs (the managed server uses your
+> local credential chain). Piloted OK with `cretra-mcp` / `ap-southeast-1` (v1.6.4). The old server
+> still works — no removal date announced. Pin `mcp-proxy-for-aws@<ver>` instead of `@latest` if you
+> want stability over auto-refresh.
+
 **`.mcp.json` — Mandatory block:**
 
 ```json
 "aws-api": {
   "command": "uvx",
-  "args": ["awslabs.aws-api-mcp-server@latest"],
-  "env": { "AWS_PROFILE": "<your-profile>", "AWS_REGION": "ap-southeast-1" }
+  "args": [
+    "mcp-proxy-for-aws@latest",
+    "https://aws-mcp.us-east-1.api.aws/mcp",
+    "--profile", "<your-profile>",
+    "--read-only",
+    "--metadata", "AWS_REGION=ap-southeast-1"
+  ]
 },
 "aws-knowledge": {
   "type": "http",

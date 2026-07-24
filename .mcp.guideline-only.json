@@ -11,11 +11,13 @@
 
     "aws-api": {
       "command": "uvx",
-      "args": ["awslabs.aws-api-mcp-server@latest"],
-      "env": {
-        "AWS_PROFILE": "<your-aws-profile>",
-        "AWS_REGION": "<your-aws-region>"
-      }
+      "args": [
+        "mcp-proxy-for-aws@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--profile", "<your-aws-profile>",
+        "--read-only",
+        "--metadata", "AWS_REGION=<your-aws-region>"
+      ]
     },
     "aws-knowledge": {
       "type": "http",
