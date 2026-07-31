@@ -1,0 +1,34 @@
+# Append to the project's .gitignore.
+#
+# Rule: commit the .example twins, never the filled files. The filled inventory and
+# group_vars carry real host addresses, Terraform output values, and secrets (PSKs,
+# access keys). This mirrors the convention already used elsewhere in this repo tree.
+
+# NOTE: .gitignore has NO inline comments -- '#' only starts a comment at the start of a
+# line. A trailing comment becomes part of the pattern and silently makes it match nothing.
+
+# Ansible — commit only the .example files; filled vars/vault/inventory carry
+# real output values + secrets (PSKs, access keys)
+ansible/group_vars/all.yml
+ansible/group_vars/vault.yml
+ansible/group_vars/*/vault
+ansible/inventory.ini
+*.retry
+
+# Vault password — must never be committed (chmod 600; a password *script* is chmod 700)
+.vault_pass
+.vault_pass.txt
+ansible/.vault_pass*
+
+# Installed collections (declared in requirements.yml, not vendored)
+ansible/collections/
+
+# Only if roles are VENDORED from Galaxy. Do NOT enable this if you author roles in-repo --
+# it would silently stop tracking every role you write.
+# ansible/roles/*/
+
+# Run artifacts
+ansible/ansible.log
+ansible/*.log
+.ansible/
+molecule/*/.molecule/

@@ -1,0 +1,63 @@
+# Copy to <project>/.yamllint
+#
+# Advisory as a STANDALONE command. But ansible-lint embeds yamllint and reads this file,
+# reporting hits as yaml[<rule>] -- which are ERRORS under profile: production, and the
+# `level:` values below do NOT carry over. To make a rule genuinely advisory, add it to
+# `warn_list` in .ansible-lint (the shipped template already lists yaml[line-length]).
+---
+extends: default
+
+ignore: |
+  .cache/
+  collections/
+  .venv/
+  .github/
+  # Vault-encrypted files are NOT YAML by design ($ANSIBLE_VAULT;1.1;AES256) --
+  # yamllint would report a syntax error on every one of them.
+  *vault*.yml
+  *vault*.yaml
+  **/vault
+
+rules:
+  # 2-space indent, lists indented under their key.
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    level: error
+
+  # House rule: booleans are written true/false. Flag yes/no/on/off.
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false        # 'on:' in a workflow file is legitimate
+    level: error
+
+  # Long Jinja expressions and URLs make a hard 80-col limit impractical.
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+    level: warning
+
+  # Ansible files conventionally start with '---'.
+  document-start:
+    present: true
+    level: error
+
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+
+  # Vault files and generated content can trip these; keep them advisory.
+  trailing-spaces:
+    level: error
+  new-line-at-end-of-file:
+    level: error
+  empty-lines:
+    max: 2
+    max-end: 1
+
+  # Quoting style is enforced by review, not by yamllint -- too noisy otherwise.
+  quoted-strings: disable
+  octal-values:
+    forbid-implicit-octal: true   # catches `mode: 0644` (should be '0644')
+    forbid-explicit-octal: false

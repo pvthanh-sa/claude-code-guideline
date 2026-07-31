@@ -1,0 +1,129 @@
+# Copy to <project>/.github/workflows/ansible-scan.yml
+#
+# Mirrors the two-tier doctrine already used by iac-scan.yml: advisory reporters plus one
+# blocking gate. The local verify ladder is not enough on its own -- CI is the
+# defense-in-depth copy that cannot be skipped.
+#
+#   yamllint            -> advisory (style; reported, never blocks)
+#   --syntax-check      -> blocking (a syntax error means nothing works)
+#   ansible-lint        -> blocking, production profile (the real gate)
+#
+# Deliberately absent: any job that RUNS a playbook against a host. CI lints; humans apply.
+---
+name: Ansible Scan
+
+'on':
+  pull_request:
+    paths:
+      - 'ansible/**'
+      - 'roles/**'
+      - 'playbooks/**'
+      - 'group_vars/**'
+      - 'host_vars/**'
+      - 'ansible/requirements.yml'
+      - '.ansible-lint'
+      - '.yamllint'
+      - '.github/workflows/ansible-scan.yml'
+  push:
+    branches: [main, master]
+    paths:
+      - 'ansible/**'
+      - 'roles/**'
+      - 'playbooks/**'
+      - 'group_vars/**'
+      - 'host_vars/**'
+      - 'ansible/requirements.yml'
+
+permissions:
+  contents: read
+
+# CI is safe to cancel when new commits arrive.
+concurrency:
+  group: ansible-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ansible-scan:
+    name: yamllint / syntax-check / ansible-lint
+    runs-on: ubuntu-latest
+    # Adjust if the playbooks do not live under ansible/. Every ansible step below runs
+    # with working-directory set to it.
+    #
+    # It has to be a real `cd`, not ANSIBLE_CONFIG=ansible/ansible.cfg: that env var loads
+    # the file, but the relative paths INSIDE it (inventory, roles_path) still resolve
+    # against the caller's cwd, so from the repo root you get the config without its
+    # inventory. Same reason verify.sh cd's into the target.
+    env:
+      ANSIBLE_DIR: ansible
+      PLAYBOOK: site.yml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install the toolchain
+        run: |
+          python -m pip install --upgrade pip
+          # Pin the majors so a new upstream release cannot turn a green PR red overnight.
+          # The 2.17 floor is not cosmetic: amazon.aws >=9 and community.general >=10
+          # declare requires_ansible >=2.17. Keep it in step with requirements.yml.
+          pip install 'ansible-core>=2.17,<2.19' 'ansible-lint>=25.0,<26.0' 'yamllint>=1.35,<2.0'
+
+      - name: Install pinned collections
+        working-directory: ansible
+        run: |
+          if [ -f requirements.yml ]; then
+            ansible-galaxy collection install -r requirements.yml
+          else
+            echo "No requirements.yml — skipping collection install"
+          fi
+
+      # 1) Style. Reported for visibility but never blocks: indentation and line length
+      #    are not correctness, and a noisy gate gets ignored.
+      #    continue-on-error alone is the non-blocking mechanism -- no trailing `|| true`,
+      #    which would also swallow yamllint crashing outright.
+      - name: yamllint (advisory)
+        continue-on-error: true
+        working-directory: ansible
+        run: yamllint -f github .
+
+      # 2) Syntax. Blocking -- catches unknown modules, bad parameters, missing includes.
+      - name: ansible-playbook --syntax-check
+        working-directory: ansible
+        run: |
+          if [ -f "${PLAYBOOK}" ]; then
+            ansible-playbook "${PLAYBOOK}" --syntax-check
+          else
+            echo "::warning::${ANSIBLE_DIR}/${PLAYBOOK} not found — syntax-check skipped"
+          fi
+
+      # 3) The real gate. production profile: FQCN, named tasks, changed_when on commands,
+      #    risky file permissions, no_log on secrets.
+      - name: ansible-lint (production profile — blocking)
+        working-directory: ansible
+        run: ansible-lint --profile production --nocolor .
+
+      # 4) Cheap structural guardrails that linting does not cover. Blocking, because each
+      #    of these is a Critical finding in the review checklist.
+      - name: Targeting-safety checks
+        working-directory: ansible
+        run: |
+          fail=0
+          # Must also catch the inline play form "- hosts: all", quoted "all", and a
+          # trailing comment. '-' is not whitespace, so ^\s*hosts: misses the common case.
+          if grep -rnE --include='*.yml' --include='*.yaml' \
+               "^[[:space:]]*-?[[:space:]]*hosts:[[:space:]]*['\"]?all['\"]?[[:space:]]*(#.*)?$" .; then
+            echo "::error::'hosts: all' found — target a specific group"; fail=1
+          fi
+          if grep -rnE 'host_key_checking[[:space:]]*=[[:space:]]*(False|false|no|0)' .; then
+            echo "::error::host_key_checking is disabled"; fail=1
+          fi
+          # grep cannot see through hosts: "{{ var }}" — flag it for human review.
+          if grep -rnE --include='*.yml' '^[[:space:]]*-?[[:space:]]*hosts:[[:space:]]*["'"'"']?\{\{' .; then
+            echo "::warning::templated 'hosts:' — blast radius cannot be verified statically"
+          fi
+          exit $fail

@@ -1,0 +1,48 @@
+# Copy to <project>/.ansible-lint
+#
+# The production profile is the strictest built-in tier and is the BLOCKING gate in both
+# the local verify ladder and CI. Prefer configuring exclusions here over sprinkling
+# `# noqa` in tasks -- a rule turned off in one place is invisible to the next author.
+---
+profile: production
+
+exclude_paths:
+  - .cache/
+  - .github/
+  - collections/
+  - molecule/
+  - .venv/
+
+# Tell ansible-lint what a non-standard path actually IS (a file type, not role detection).
+# kinds:
+#   - playbook: 'playbooks/*.yml'
+#   - tasks: 'tasks/*.yml'
+
+# Warn instead of failing, for rules you are migrating toward.
+# NOTE: ansible-lint embeds yamllint and reports it as yaml[<rule>]. Under the production
+# profile those are ERRORS, and `level: warning` in .yamllint does NOT carry over -- the only
+# way to make a yamllint rule advisory is to list it here.
+warn_list:
+  - experimental          # newly added upstream rules land here first
+  - yaml[line-length]     # long Jinja expressions and URLs; .yamllint caps at 120
+  # - package-latest      # uncomment if you deliberately track latest on some hosts
+
+# Rules genuinely not applicable to this project. Every entry needs a justification.
+# Comment out the KEY together with its items -- `skip_list: []` followed by an indented
+# `- item` is a YAML error, i.e. a template that breaks the moment you use it.
+skip_list: []
+# skip_list:
+#   - var-naming[no-role-prefix]   # only if an existing role predates the prefix convention
+
+# Treat these as errors even in a lighter profile.
+# enable_list:
+#   - no-log-password
+#   - risky-file-permissions
+
+# Stub out modules/roles that are NOT installed locally so parsing still succeeds.
+# (Nothing to do with Vault -- ansible-lint detects $ANSIBLE_VAULT files and skips them.)
+# mock_modules: []
+# mock_roles: []
+
+# Offline keeps CI hermetic: do not let a lint run reach out to Galaxy.
+offline: true

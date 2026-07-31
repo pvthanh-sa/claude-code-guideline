@@ -1,0 +1,50 @@
+# Copy to <project>/ansible/requirements.yml
+#
+# Install with:
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-galaxy role install -r requirements.yml
+#
+# Pin every collection. An unpinned collection means a module's behaviour can change
+# between two runs of the same playbook -- the opposite of what configuration
+# management is for.
+#
+# CONTROL-NODE FLOOR: amazon.aws >=9 and community.general >=10 both declare
+# `requires_ansible: >=2.17`. Keep ansible-core >= 2.17 locally AND in CI, or CI resolves a
+# newer core, passes, and the same playbook fails on a laptop pinned to 2.16.
+---
+collections:
+  # AWS modules + the aws_ec2 dynamic inventory plugin + the aws_ssm connection plugin.
+  # Needs boto3/botocore on the control node.
+  - name: amazon.aws
+    version: '>=9.0.0,<10.0.0'
+
+  # Broad grab-bag: pids, timezone, ini_file, pam_limits, and sefcontext (the persistent
+  # SELinux labeling module -- file's setype: alone does not survive a relabel).
+  - name: community.general
+    version: '>=10.0.0,<11.0.0'
+
+  # POSIX-specific: firewalld, seboolean, sysctl, mount, authorized_key, synchronize,
+  # plus the profile_tasks callback. Required for the RedHat-family firewall/SELinux path.
+  - name: ansible.posix
+    version: '>=2.0.0,<3.0.0'
+
+  # Container management + the docker connection driver used by molecule.
+  - name: community.docker
+    version: '>=4.0.0,<5.0.0'
+
+  # Uncomment when the project actually needs them -- do not install speculatively.
+  # - name: community.postgresql
+  #   version: '>=4.0.0,<5.0.0'
+  # - name: ansible.utils          # ipaddr/ipmath filters
+  #   version: '>=5.0.0,<6.0.0'
+  # - name: community.crypto       # openssl_certificate, x509 helpers
+  #   version: '>=2.20.0,<3.0.0'
+
+# Prefer writing a small role over pulling a large community one. If you do pull one, pin the
+# version and read its tasks -- it runs with your privileges.
+# Comment out the KEY together with its items: `roles: []` followed by an indented `- name:`
+# is a YAML error.
+roles: []
+# roles:
+#   - name: geerlingguy.security
+#     version: 2.4.0
