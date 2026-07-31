@@ -244,12 +244,45 @@ for t in terraform aws uvx docker tflint checkov trivy python3; do command -v $t
 command -v betterleaks >/dev/null || command -v gitleaks >/dev/null && echo "ok  secret scanner" || echo "FAIL no betterleaks/gitleaks (§1.0)"
 command -v drawio >/dev/null && echo "ok  drawio (Stage 5 PNG auto-export)" || echo "warn no drawio CLI — Stage 5 degrades to manual PNG export + Mermaid mirror (§1.0)"
 command -v openssl >/dev/null && echo "ok  openssl" || echo "warn no openssl — only needed for mTLS projects (mint-certs.sh)"
-echo "== PostToolUse 'terraform fmt' hook (functional test — a present-but-dead hook looks identical) =="
+echo "== PostToolUse hooks (functional test — a present-but-dead hook looks identical) =="
 HK=$( [ -f .claude/settings.json ] && echo .claude/settings.json || echo "$GUIDE/.claude/settings.json" )
-HC=$(python3 -c "import json;print(json.load(open('$HK'))['hooks']['PostToolUse'][0]['hooks'][0]['command'])" 2>/dev/null)
-T=$(mktemp -d); printf 'a  =   1\n' > "$T/x.tf"
+# Select each hook by SUBSTRING, never by index: there is more than one hook now, and an
+# index-based lookup would silently exercise the wrong one after any reordering.
+pick() { python3 -c "
+import json,sys
+for e in json.load(open('$HK'))['hooks']['PostToolUse']:
+    for h in e.get('hooks',[]):
+        if '$1' in h.get('command',''): print(h['command']); sys.exit()
+" 2>/dev/null; }
+T=$(mktemp -d)
+HC=$(pick 'terraform fmt'); printf 'a  =   1\n' > "$T/x.tf"
 printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/x.tf" | sh -c "$HC" >/dev/null 2>&1
-[ "$(cat "$T/x.tf")" = "a = 1" ] && echo "ok  fmt hook formats on Edit/Write ($HK)" || echo "FAIL fmt hook is dead (no-ops silently) — it must read tool_input.file_path from stdin JSON; there is no \$CLAUDE_FILE env var"
+[ "$(cat "$T/x.tf")" = "a = 1" ] && echo "ok  fmt hook formats .tf on Edit/Write ($HK)" || echo "FAIL fmt hook is dead (no-ops silently) — it must read tool_input.file_path from stdin JSON; there is no \$CLAUDE_FILE env var"
+# The ansible hook cannot be proven the same way. Its correct behaviour on almost every input
+# is SILENCE — which is also exactly what a dead hook does, so a silence check alone is a rubber
+# stamp. Two assertions instead: a structural one that catches the $CLAUDE_FILE class of death
+# for BOTH hooks, and a real positive test that only runs when the linters are installed.
+HA=$(pick 'ansible-lint --nocolor')
+if [ -z "$HA" ]; then echo "warn no ansible lint hook in $HK (fine unless this is an Ansible project)"
+else
+  case "$HA" in
+    *CLAUDE_FILE*)  echo "FAIL ansible hook reads \$CLAUDE_FILE — that env var does not exist; it can never fire" ;;
+    *tool_input*)   echo "ok  ansible hook reads tool_input.file_path from stdin JSON" ;;
+    *)              echo "FAIL ansible hook never reads the edited path — it can never fire" ;;
+  esac
+  mkdir -p "$T/p/ansible/roles/r/tasks"; : > "$T/p/.ansible-lint"
+  printf -- '- ansible.builtin.command: /bin/true\n' > "$T/p/ansible/roles/r/tasks/main.yml"   # unnamed task + no changed_when
+  if command -v ansible-lint >/dev/null 2>&1 || command -v yamllint >/dev/null 2>&1; then
+    ( cd "$T/p" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/p/ansible/roles/r/tasks/main.yml" | sh -c "$HA" >/dev/null 2>&1 )
+    [ $? -eq 2 ] && echo "ok  ansible hook reports findings (exit 2 -> reaches Claude)" || echo "FAIL ansible hook stayed silent on a task with no name and no changed_when"
+    ( cd "$T" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/p/ansible/roles/r/tasks/main.yml" | sh -c "$HA" >/dev/null 2>&1 )
+    [ $? -eq 0 ] && echo "ok  ansible hook is opt-in (silent without .ansible-lint in cwd)" || echo "FAIL ansible hook fired in a project with no .ansible-lint"
+  else
+    echo "warn ansible hook NOT functionally tested — yamllint/ansible-lint not installed (§1.0). Silence here proves nothing."
+  fi
+  rm -f "$T/p/ansible/roles/r/tasks/main.yml" "$T/p/.ansible-lint"
+  rmdir "$T/p/ansible/roles/r/tasks" "$T/p/ansible/roles/r" "$T/p/ansible/roles" "$T/p/ansible" "$T/p"
+fi
 rm -f "$T/x.tf"; rmdir "$T"
 echo "== spec MCP config =="
 test -f ~/.claude/spec-mcp.json && { grep -q '<your-' ~/.claude/spec-mcp.json && echo "FAIL spec-mcp.json still has <your-> placeholders to fill (§1.4)" || echo "ok  spec-mcp.json filled"; } || echo "FAIL spec-mcp.json missing (§1.4)"
