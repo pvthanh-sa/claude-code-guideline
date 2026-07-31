@@ -200,6 +200,26 @@ __claude_switch acc2; jq -r '.oauthAccount.emailAddress' ~/.claude.json
 # (end on the account you want to use)
 ```
 
+## When a token expires (normal, expected)
+
+Just run **`/login` inside that same session**, authorizing as **that** account. Nothing else
+is needed — no temp dir, no file copying. The fresh token lands in the live credentials, and
+the next `__claude_switch` auto-saves it into that account's bundle.
+
+Verified in a sandbox (fake HOME + fake tokens) for the full cycle:
+in-session `/login` → relaunch same account (no-op keeps the FRESH token, stale bundle does not
+clobber it) → switch away (fresh token is auto-saved to its bundle) → switch back (returns on the
+FRESH token, **no re-login**). Also verified: logging in as the *wrong* account mid-session stores
+its token in the *correct* bundle without contaminating the other one.
+
+Optional, if you want the bundle updated immediately instead of at the next switch:
+
+```bash
+source ~/.bash_aliases && __claude_save <accname>
+```
+
+Only rule: authorize as the account that session is running (`claude-accX` → log in as `accX`).
+
 ## Troubleshooting
 
 - **`claude-accX` prompts for login:** that bundle's token expired. Run `claude-accX` →
