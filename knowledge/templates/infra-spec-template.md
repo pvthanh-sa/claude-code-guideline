@@ -70,6 +70,18 @@
 | Database | `rds` | no |
 | … | … | … |
 
+## 8.1 Deferred to configuration management (Ansible — omit if the stack has no hosts)
+> Terraform provisions the host; what runs *inside* it is Stage 3b's job. List it here so it is
+> scoped at G1 instead of being discovered after apply. Omit this section entirely for a
+> serverless / fully managed stack.
+
+| In-guest concern | Handled by | Values needed from Terraform |
+|------------------|-----------|------------------------------|
+| <packages, service config, certs, tuning> | `<role name>` | `<terraform output name>` |
+| … | … | … |
+
+- **Not automatable** (stays a human runbook step): <e.g. vendor call, physical access, visual check>
+
 ## 9. Decisions needing the human (open at G1)
 > Two kinds of item — never leave a blank question for the reader to invent, and never fabricate facts:
 > - **Recommendation** = the best technical option + reason; you confirm or change it.

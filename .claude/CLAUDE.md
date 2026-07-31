@@ -16,6 +16,7 @@ Communicate in Vietnamese when user speaks Vietnamese.
 ## Default Tools & Workflows
 
 - **IaC:** Terraform (AWS primary)
+- **Config management:** Ansible (ansible-core over SSH; RedHat family primary)
 - **CI/CD:** GitHub Actions with OIDC authentication
 - **Container:** Docker → ECR → ECS Fargate / Kubernetes
 - **Database:** PostgreSQL (Aurora preferred)
@@ -33,6 +34,19 @@ Communicate in Vietnamese when user speaks Vietnamese.
 - Always pin provider versions with `>=` constraints
 - Validate chain: `terraform fmt` → `terraform validate` → `tflint` → `checkov` → `trivy config` → `terraform plan`
 - Enforce the same IaC checks in CI (`.github/workflows/iac-scan.yml`) on every PR — defense-in-depth
+
+### Ansible
+- **Terraform provisions, Ansible configures** — never create cloud resources from Ansible in a
+  Terraform-first project. Infra values arrive at run time: `-e "x=$(terraform output -raw x)"`
+- Every inventory host is production until proven otherwise: no `hosts: all`, always `--limit`,
+  `--check --diff` before anything real
+- Idempotency is proven by a **real** second run reporting `changed=0` — `--check` cannot prove it
+  (it skips `command`/`shell`, the exact task class that breaks idempotency)
+- Validate chain: `yamllint` → `--syntax-check` → `ansible-lint --profile production` →
+  `--check --diff --limit <host>`; enforce the same in CI (`.github/workflows/ansible-scan.yml`)
+- The toolchain is often absent — gate every invocation with `command -v` and report a skipped
+  gate as skipped, never as a pass
+- **The human runs the playbook.** Author, verify, present the diff, stop
 
 ### GitHub Actions
 - OIDC for AWS auth (never long-lived keys)
@@ -56,14 +70,21 @@ End-to-end, **human-in-the-loop** flow (full runbook: `knowledge/devops-workflow
 Each stage is a discrete skill that **STOPS at an approval gate** — never auto-advance:
 
 ```
-/spec-architect → /init-project → /iac-implement → /infra-review → /infra-document → /secret-scan → git push
-      G1               G2               G3               G4               G5              G6
+/spec-architect → /init-project → /iac-implement → [you apply] → /infra-review → /infra-document → /secret-scan → git push
+      G1               G2               G3              ↓             G4               G5               G6
+                                                 /ansible-implement
+                                                        G3b
 ```
 
 - **G1** — approve `docs/specs/<name>.spec.md` before init
 - **G2** — approve `CLAUDE.md` + fill `.mcp.json` before writing IaC
 - **G3** — approve `terraform plan` BEFORE `apply` (never auto-apply)
-- **G4** — approve the review report (security + infra + cost) → go / fix / no-go
+- **G3b** — *(only when the stack has hosts to configure)* approve the Ansible role + its
+  `--check --diff`; **you** run the playbook, never Claude. Ansible configures what Terraform
+  provisioned, so it sits between apply and review — not at the end
+- **G4** — approve the review report → go / fix / no-go. Stack-aware: Terraform gets
+  security + infra + cost, Ansible gets security + idempotency/secrets/privilege/targeting,
+  a mixed repo gets all four in one report
 - **G5** — approve `docs/infrastructure.md` + `docs/diagrams/infra.drawio` + auto-exported `infra.png` (living doc)
 - **G6** — secret scan clean before `git push` (Betterleaks/Gitleaks tool gate)
 
@@ -72,8 +93,8 @@ The human is the driver; Claude is the co-pilot. No stage runs `terraform apply`
 ## Skills Available
 
 Type `/` to see all available skills:
-- **Pipeline:** spec-architect, init-project, iac-implement, infra-review, infra-document, secret-scan
-- **Infrastructure:** terraform-engineer, kubernetes-specialist, postgres-pro, cloud-architect, database-optimizer
+- **Pipeline:** spec-architect, init-project, iac-implement, ansible-implement, infra-review, infra-document, secret-scan
+- **Infrastructure:** terraform-engineer, ansible-engineer, kubernetes-specialist, postgres-pro, cloud-architect, database-optimizer
 - **DevOps:** devops-engineer, monitoring-expert, sre-engineer, chaos-engineer, cli-developer
 - **Security:** secure-code-guardian, security-reviewer
 

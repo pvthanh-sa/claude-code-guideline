@@ -1,6 +1,6 @@
 # Claude Core Setup — Personal DevOps/SRE Toolkit
 
-A highly customized, reusable toolkit designed for DevOps Engineers, SREs, and Cloud Architects. This repository encapsulates comprehensive infrastructure knowledge, secure CI/CD patterns, and cloud best practices (AWS/Terraform focused), allowing Claude Code to act as an advanced infrastructure co-pilot.
+A highly customized, reusable toolkit designed for DevOps Engineers, SREs, and Cloud Architects. This repository encapsulates comprehensive infrastructure knowledge, secure CI/CD patterns, and cloud best practices (AWS/Terraform for provisioning, Ansible for configuration), allowing Claude Code to act as an advanced infrastructure co-pilot.
 
 ---
 
@@ -9,7 +9,7 @@ A highly customized, reusable toolkit designed for DevOps Engineers, SREs, and C
 The core configuration is located in the `.claude/` directory and can be copied to any project to instantly arm it with top-tier DevOps capabilities.
 
 ### 1. Project Context (`.claude/CLAUDE.md`)
-The `CLAUDE.md` sets the standard persona: a Senior DevOps/SRE Engineer prioritizing reliability, security, automation, and cost-efficiency. It defines default tools (Terraform, GitHub Actions, Docker, ECS Fargate, Postgres) and global conventions.
+The `CLAUDE.md` sets the standard persona: a Senior DevOps/SRE Engineer prioritizing reliability, security, automation, and cost-efficiency. It defines default tools (Terraform, Ansible, GitHub Actions, Docker, ECS Fargate, Postgres) and global conventions.
 
 ### 2. Agents (`.claude/agents/`)
 Specialized subagents configured for specific large-scale audits and investigations:
@@ -17,48 +17,58 @@ Specialized subagents configured for specific large-scale audits and investigati
 - **`security-auditor`**: Scans for secrets exposure, IAM misconfigurations, missing encryption, and network isolation gaps.
 - **`incident-responder`**: Operates during outages to triage, diagnose, and suggest remediation for AWS infra.
 - **`cost-optimizer`**: Analyzes state/resources for right-sizing, reserved instances, storage lifecycle tweaks.
+- **`ansible-reviewer`**: Reviews playbooks/roles for idempotency, secret handling, privilege scope, targeting safety.
 
 ### 3. Rules (`.claude/rules/`)
 Enforced coding standards across different file types:
 - **`terraform.md`**: Enforces naming targets, tag merging, S3 backend locks, and prohibits auto-approve.
+- **`ansible.md`**: The Terraform/Ansible boundary, FQCN + idempotency, Vault vs Secrets Manager, targeting safety.
 - **`docker.md`**: Multi-stage builds, non-root users, pinning base images, layer minimization.
 - **`kubernetes.md`**: Resource requests/limits, network policies, non-root constraints.
 - **`cicd.md`**: GitHub Actions OIDC auth (no long-lived keys), environments, concurrency settings.
 - **`security.md`**: Globals preventing hardcoded credentials, wildcard IAM permissions in prod.
 
 ### 4. Skills (`.claude/skills/`)
-12 bundled skills encompassing varied competencies. Simply type `/` in Claude Code to see and trigger them:
+Domain skills, on top of the seven pipeline stages below. Simply type `/` in Claude Code to see and trigger them:
 1. `terraform-engineer`: **(Custom)** Handles module development, state management, and infra review.
 2. `devops-engineer`: **(Custom)** Encodes strict CI/CD patterns, deployment strategies, release automation.
-3. `kubernetes-specialist`: EKS context, Ingress controllers, Helm operations.
-4. `cloud-architect`: AWS Well-Architected Framework guidance.
-5. `postgres-pro`: Aurora optimization, performance, JSONB tuning.
-6. `security-reviewer`: Vetting Code/IaC using Checkov/Trivy patterns.
-7. `database-optimizer`: General DB Indexing, query tuning.
-8. `monitoring-expert`: Prometheus, Grafana, OpenTelemetry, alert rules.
-9. `sre-engineer`: SLOs, SLIs, toil reduction, error budgets.
-10. `chaos-engineer`: Infrastructure chaos design, game days.
-11. `cli-developer`: Internal tooling (Go/Node/Python CLIs).
-12. `secure-code-guardian`: OWASP prevention.
+3. `ansible-engineer`: **(Custom)** Playbook/role authoring, inventory design, Vault, the verify ladder.
+4. `kubernetes-specialist`: EKS context, Ingress controllers, Helm operations.
+5. `cloud-architect`: AWS Well-Architected Framework guidance.
+6. `postgres-pro`: Aurora optimization, performance, JSONB tuning.
+7. `security-reviewer`: Vetting Code/IaC using Checkov/Trivy patterns.
+8. `database-optimizer`: General DB Indexing, query tuning.
+9. `monitoring-expert`: Prometheus, Grafana, OpenTelemetry, alert rules.
+10. `sre-engineer`: SLOs, SLIs, toil reduction, error budgets.
+11. `chaos-engineer`: Infrastructure chaos design, game days.
+12. `cli-developer`: Internal tooling (Go/Node/Python CLIs).
+13. `secure-code-guardian`: OWASP prevention.
 
 ---
 
 ## 🔁 DevOps Pipeline (human-in-the-loop)
 
-Beyond individual skills, six of them chain into an end-to-end flow with a **human approval
-gate at every step** — Claude never auto-advances and never runs `terraform apply`, `git push`, or commits:
+Beyond individual skills, seven of them chain into an end-to-end flow with a **human approval
+gate at every step** — Claude never auto-advances and never runs `terraform apply`,
+`ansible-playbook`, `git push`, or commits:
 
 ```
-/spec-architect → /init-project → /iac-implement → /infra-review → /infra-document → /secret-scan
-      G1               G2               G3               G4               G5              G6
+/spec-architect → /init-project → /iac-implement → [you apply] → /infra-review → /infra-document → /secret-scan
+      G1               G2               G3              ↓             G4               G5               G6
+                                                 /ansible-implement
+                                                        G3b
 ```
 
 - **Stage 1 — `/spec-architect`**: co-design `docs/specs/<name>.spec.md` (Well-Architected + pricing).
 - **Stage 2 — `/init-project`**: detect stack (reads the spec), generate `CLAUDE.md` + `.mcp.json`.
 - **Stage 3 — `/iac-implement`**: reuse the custom module library (`MODULES.md`) → scaffold an
   environment → `fmt/validate/tflint/checkov/plan`.
-- **Stage 4 — `/infra-review`**: a parallel **Workflow** runs `security-auditor` + `infra-reviewer`
-  + `cost-optimizer`, synthesized into one severity-ranked go/no-go report.
+- **Stage 3b — `/ansible-implement`** *(only when the stack has hosts to configure)*: turn a spec,
+  runbook or bash script into an idempotent role → `yamllint/--syntax-check/ansible-lint` → a
+  reviewed `--check --diff`. Terraform provisions, Ansible configures, so it runs after the apply.
+- **Stage 4 — `/infra-review`**: a parallel **Workflow**, stack-aware — Terraform gets
+  `security-auditor` + `infra-reviewer` + `cost-optimizer`, Ansible gets `security-auditor` +
+  `ansible-reviewer`, a mixed repo gets all four — synthesized into one severity-ranked go/no-go report.
 - **Stage 5 — `/infra-document`**: generate a living `docs/infrastructure.md` + an AWS-grouped
   `docs/diagrams/infra.drawio` (stencil/geometry validator gate) + an auto-exported, vision-checked
   `infra.png`, derived from the as-built Terraform.

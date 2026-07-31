@@ -39,6 +39,18 @@ pip install --user checkov
 # gitleaks: static binary from github.com/gitleaks/gitleaks/releases  ·  betterleaks: see secret-scan README
 ```
 
+**Ansible projects only** — skip on a Terraform-only stack. Use the shipped bootstrap rather than a
+bare `pip3 install`, which modern distros refuse (PEP 668) and which would put ansible-core in the
+system interpreter's site-packages:
+
+```bash
+.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run   # read the plan first
+.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh             # venv/pyenv -> pipx -> refuse
+```
+
+It installs `ansible-core>=2.17` (the floor `amazon.aws>=9` and `community.general>=10` require),
+`ansible-lint`, `yamllint`, `molecule`, and the four pinned collections.
+
 > **Docker fallback** (only if you can't install a binary): `ghcr.io/aquasecurity/trivy`,
 > `bridgecrew/checkov`, `ghcr.io/betterleaks/betterleaks` (Docker Hub `aquasecurity/trivy` is
 > retired). Binary is preferred — closer to CI and no per-tool Docker quirks.

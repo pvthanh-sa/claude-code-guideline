@@ -139,6 +139,7 @@ Once the skill finishes:
 |---|---|---|---|---|
 | **Always** | `devops-engineer`, `secure-code-guardian` | — | `security.md` | — |
 | **Terraform** | `terraform-engineer`, `cloud-architect` | `infra-reviewer.md` | `terraform.md` | `terraform`, `iac` |
+| **Ansible** (`ansible.cfg`, `site.yml`, `roles/*/tasks/`, `playbooks/`, `group_vars/`) | `ansible-engineer` | `ansible-reviewer.md` | `ansible.md` | **none** — the catalog's `ansible` key is Red Hat **AAP** (needs a controller + OAuth token); a plain ansible-core-over-SSH project has nothing to point it at |
 | **Docker** | — | — | `docker.md` | — |
 | **Kubernetes / Helm** | `kubernetes-specialist` | — | `kubernetes.md` | `eks` (if EKS) |
 | **PostgreSQL / Aurora** | `postgres-pro`, `database-optimizer` | — | — | `aurora-postgresql` |

@@ -37,12 +37,13 @@ Receive request → /spec-architect → /init-project → /iac-implement → /in
 ## Table of contents
 
 1. [One-time setup](#1-one-time-setup)
-2. [Overview: 6 steps + 6 gates](#2-overview-6-steps--6-gates)
+2. [Overview: 7 steps + 7 gates](#2-overview-7-steps--7-gates)
 3. [Worked example](#3-worked-example)
 4. [Step 0 — Receive the request](#step-0--receive-the-request)
 5. [Step 1 — `/spec-architect` (Gate G1)](#step-1--spec-architect-gate-g1)
 6. [Step 2 — `/init-project` (Gate G2)](#step-2--init-project-gate-g2)
 7. [Step 3 — `/iac-implement` (Gate G3)](#step-3--iac-implement-gate-g3)
+   - [Step 3b — `/ansible-implement` (Gate G3b — optional)](#step-3b--ansible-implement-gate-g3b--optional)
 8. [Step 4 — `/infra-review` (Gate G4)](#step-4--infra-review-gate-g4)
 9. [Step 5 — `/infra-document` (Gate G5)](#step-5--infra-document-gate-g5)
 10. [Step 6 — `/secret-scan` (Gate G6)](#step-6--secret-scan-gate-g6)
@@ -84,7 +85,9 @@ some loudly (terraform, scanners), some **silently** (MCP servers just don't sta
 | `aws` CLI | Stage 1/3/4 (creds, plan backend, Access Analyzer) | `awscli` |
 | `uv`/`uvx` | **most AWS MCP servers** (spec data, pricing, live reads) — silent fail without it | `curl -LsSf https://astral.sh/uv/install.sh \| sh && uv python install 3.10` |
 | `docker` | terraform/github MCP + betterleaks Docker fallback | [docker install](https://docs.docker.com/engine/install/) |
-| `node`/`npx` | grafana/ansible MCP (only if used) | nvm / distro pkg |
+| `node`/`npx` | grafana MCP (only if used) | nvm / distro pkg |
+| `ansible-core` `ansible-lint` `yamllint` | **Stage 3b only** — skip entirely for a Terraform-only stack. Without them every G3b gate reports SKIPPED and `verify.sh` exits 3 INCONCLUSIVE (never 0) | `.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run` first — it picks venv/pyenv → pipx and refuses a bare system `pip3` (PEP 668) |
+| `molecule` (optional) | Stage 3b role testing in a container | same bootstrap script; needs `docker` |
 | `tflint` `checkov` `trivy` | Stage 3 local IaC scan (else SKIPPED, reported "not run") | see [`security-scans-cli.md`](security-scans-cli.md) §0 |
 | `betterleaks` (or `gitleaks`) | Stage 6 secret scan (hard-fails at G6 if none) | `brew install betterleaks` / binary / `docker pull ghcr.io/betterleaks/betterleaks:latest` |
 | `drawio` (desktop CLI) | Stage 5 auto-exports `infra.png` from the diagram; without it Stage 5 falls back to manual export + a Mermaid mirror | deb/AppImage from [drawio-desktop releases](https://github.com/jgraph/drawio-desktop/releases); headless machines also need `xvfb` (`apt install xvfb`) |
@@ -106,7 +109,7 @@ test -d "$GUIDE/.claude/skills" || { echo "STOP: $GUIDE/.claude/skills not found
 mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
 
 # Skills
-for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
   ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
 
@@ -116,19 +119,19 @@ for wf in "$GUIDE"/.claude/workflows/*.js; do
 done
 
 # Reviewer agents the infra-review workflow invokes (security-auditor / infra-reviewer / cost-optimizer /
-# incident-responder). /init-project also copies these per-project, but symlinking them user-level lets
+# ansible-reviewer / incident-responder). /init-project also copies these per-project, but symlinking them user-level lets
 # /infra-review work in ANY project (incl. ones where init wasn't run), and matches the skills above.
-for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+for a in infra-reviewer cost-optimizer security-auditor ansible-reviewer incident-responder; do
   ln -sfn "$GUIDE/.claude/agents/$a.md" ~/.claude/agents/$a.md
 done
 
 # Sanity: no dangling symlinks (each must resolve to a real file)
-for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
   readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok  $s" || echo "DANGLING $s — check GUIDE / clone"
 done
 ```
 
-**Restart Claude Code**, type `/` — you should see all 6 commands.
+**Restart Claude Code**, type `/` — you should see all 7 commands.
 
 > **Why symlink matters for file resolution:** each skill reaches back into the guideline repo for
 > the files it needs at runtime — templates (`iac-scan.yml`, `secret-scan/`, `infra-document-template.md`),
@@ -230,17 +233,19 @@ piece surfaces now (PASS/FAIL per line) instead of mid-pipeline:
 ```bash
 GUIDE=~/Documents/Devops/claude-code-guideline   # your guideline clone (from §1.0)
 echo "== skills/workflow/agents resolve (catches dangling symlinks) =="
-for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
   readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok  skill $s" || echo "FAIL skill $s"
 done
 readlink -f ~/.claude/workflows/infra-review.js >/dev/null 2>&1 && echo "ok  workflow infra-review" || echo "FAIL workflow infra-review"
-for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+for a in infra-reviewer cost-optimizer security-auditor ansible-reviewer incident-responder; do
   readlink -f ~/.claude/agents/$a.md >/dev/null 2>&1 && echo "ok  agent $a" || echo "FAIL agent $a"
 done
 echo "== module library =="
 test -d "$TF_MODULE_LIB/modules" && echo "ok  TF_MODULE_LIB ($TF_MODULE_LIB)" || echo "FAIL TF_MODULE_LIB unset or no modules/ — clone custom-infra (§1.0/§1.3)"
 echo "== CLIs / runtimes =="
 for t in terraform aws uvx docker tflint checkov trivy python3; do command -v $t >/dev/null && echo "ok  $t" || echo "FAIL $t (see §1.0)"; done
+# Stage 3b only — a Terraform-only machine SHOULD show these as warn, not FAIL.
+for t in ansible-playbook ansible-lint yamllint; do command -v $t >/dev/null && echo "ok  $t" || echo "warn no $t — Stage 3b (/ansible-implement) gates will report SKIPPED (§1.0)"; done
 command -v betterleaks >/dev/null || command -v gitleaks >/dev/null && echo "ok  secret scanner" || echo "FAIL no betterleaks/gitleaks (§1.0)"
 command -v drawio >/dev/null && echo "ok  drawio (Stage 5 PNG auto-export)" || echo "warn no drawio CLI — Stage 5 degrades to manual PNG export + Mermaid mirror (§1.0)"
 command -v openssl >/dev/null && echo "ok  openssl" || echo "warn no openssl — only needed for mTLS projects (mint-certs.sh)"
@@ -294,22 +299,26 @@ All `ok`? You're ready for Stage 1. Any `FAIL` points at the section to fix.
 
 ---
 
-## 2. Overview: 6 steps + 6 gates
+## 2. Overview: 7 steps + 7 gates
 
 | #   | Command                       | You receive                                             | Gate   | You decide                         | Next command                                    |
 | --- | ----------------------------- | ------------------------------------------------------- | ------ | ---------------------------------- | ----------------------------------------------- |
 | 1   | `/spec-architect <name>`      | `docs/specs/<name>.spec.md`                             | **G1** | Spec right?                        | create folder → `/init-project`                 |
 | 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`                    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
 | 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`                       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
-| 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md`          | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
+| 3b  | `/ansible-implement <src> <dir>` *(optional — only if the stack has hosts)* | role/playbook + `--check --diff`      | **G3b** | Mapping + diff OK?                | **you** run the playbook twice (2nd = `changed=0`) → `/infra-review` |
+| 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md` (stack-aware roster) | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
 | 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` (one, or split into `infra-<slug>.drawio` views) + auto-exported PNG(s) + `README.md` | **G5** | doc accurate? diagram(s) correct + readable? | review doc + PNG(s), commit                     |
 | 6   | `/secret-scan`                | scan result + guardrail (hook + CI)                     | **G6** | clean? real leak to rotate?        | `git push` (hook + CI re-scan)                  |
 
 **Safety invariant:** `.claude/settings.json` (**copied** into the project by `/init-project` if the
 project has none — not generated per-stack) hard-denies `terraform destroy`, `terraform apply
--auto-approve`, and the common destructive `aws … delete/terminate/revoke` verbs (deny wins over
-allow). A plain `terraform apply tfplan` is **not** in the allow list, so it **prompts for permission**
-before running → you are the only one who presses "apply". It **does** auto-allow read-only reads
+-auto-approve`, the common destructive `aws … delete/terminate/revoke` verbs, ad-hoc
+`ansible <pattern> -m …`, and `ansible-vault decrypt`/`view` (which would print plaintext into the
+transcript, and therefore into the model's context). Deny wins over allow. Neither
+`terraform apply tfplan` nor `ansible-playbook` is in the allow list, so both **prompt for
+permission** → you are the only one who presses "apply" or touches a host. Treat the list as a
+speed-bump, not a security boundary: prefix matching cannot see through `bash -c`, `env`, or `xargs`. It **does** auto-allow read-only reads
 (scanners, `terraform plan/validate`, and a broad AWS `describe*`/`list*`/safe-`get*` bundle) so
 routine review/inspection doesn't prompt-churn — for a full `Bash(aws *)` bypass during `--live`, pair
 it with a read-only profile (Step 4 "review the live stack").
@@ -677,9 +686,75 @@ or the plan). Treat this as part of Step 3, not an afterthought:
 
 ---
 
+## Step 3b — `/ansible-implement` (Gate G3b — optional)
+
+**Goal:** turn a runbook into an idempotent role, verified as far as a `--check --diff` — then *you*
+run it.
+
+> **Skip this whole step** for a serverless or fully managed stack. The worked example in this guide
+> (`care-hub`: ECS Fargate + Aurora + ALB + CloudFront) has no hosts to configure and never reaches
+> G3b. It exists for the part Terraform cannot reach: what runs *inside* an EC2 instance or an
+> on-prem box.
+
+### 3b.1 When it applies
+
+Terraform provisions the host; Ansible decides what runs on it. A request for cloud resources goes
+back to `/iac-implement` — if a role is reaching for `amazon.aws.ec2_instance` in a Terraform-first
+project, the boundary has been crossed.
+
+### 3b.2 Run it
+
+```bash
+/ansible-implement docs/runbooks/<name>.md ansible/
+```
+
+`<source>` is a spec, an **ops runbook** (`docs/runbooks/*.md` — the richest source: numbered manual
+steps map almost 1:1 to tasks), or an existing bash script.
+
+### 3b.3 What Claude does
+
+1. **Preflight** — resolves the guideline repo, then reports which of `ansible`, `ansible-playbook`,
+   `ansible-lint`, `yamllint`, `molecule` are actually installed. Nothing is assumed; authoring works
+   without them, only verification needs them.
+2. **Step→module map** — a table, presented *before* any YAML: source step → native module →
+   idempotency mechanism. This is where the engineering judgment lives, so read it. A step that
+   stays `command`/`shell` must justify itself and carry `creates:`/`removes:`/`changed_when:`.
+3. **Scaffold** — role skeleton, `.example` twins for inventory and vars, the `vars`/`vault` split,
+   and the supporting files copied from `knowledge/templates/ansible/` (`ansible.cfg`,
+   `requirements.yml`, `.ansible-lint`, `.yamllint`, and the `ansible-scan.yml` CI gate).
+4. **Verify ladder** — `yamllint` → `--syntax-check` → `ansible-lint --profile production` →
+   `--check --diff --limit <one-host>`. Or in one shot:
+   `.claude/skills/ansible-engineer/scripts/verify.sh ansible/ --limit <host>`, which exits **3
+   INCONCLUSIVE** (never 0) when a blocking gate never ran because the tool is missing.
+
+### 3b.4 Gate G3b — you run the playbook
+
+Claude never touches a host. After approving the diff, run it yourself — **twice**:
+
+```bash
+cd ansible
+ansible-playbook site.yml --limit <host> --diff        # first real run
+ansible-playbook site.yml --limit <host> --diff        # must report changed=0
+```
+
+Paste both back; Claude reads them and confirms or disproves idempotency. **A second `--check` does
+not count** — check mode *skips* `command`/`shell`, which is precisely the task class that breaks
+idempotency, so it can never surface the defect you are testing for.
+
+> **`cd ansible` matters.** `ansible.cfg` is resolved against the current directory, never the
+> playbook's. Running `ansible-playbook ansible/site.yml` from the repo root silently ignores
+> `ansible/ansible.cfg` — inventory, `roles_path` and `host_key_checking` all revert to defaults.
+> `ANSIBLE_CONFIG=` does not fix it: it loads the file but leaves the relative paths inside it
+> resolving against your cwd.
+
+**→ Then `/infra-review`** — G4 is the review gate for both stacks; it detects the Ansible tree and
+fans out `ansible-reviewer` alongside the security auditor.
+
+---
+
 ## Step 4 — `/infra-review` (Gate G4)
 
-**Goal:** one prioritized go/no-go report from 3 parallel reviewers — then you decide.
+**Goal:** one prioritized go/no-go report from parallel reviewers, chosen by stack — then you decide.
 
 ### Run it
 
@@ -938,14 +1013,15 @@ The pipeline focuses on _building_. After `apply`, other skills/agents support o
 GUIDE=~/Documents/Devops/claude-code-guideline   # set to YOUR clone of the guideline repo (§1.0)
 # git clone <guideline-url> "$GUIDE"; git clone <custom-infra-url> ~/Documents/Devops/terraforms/custom-infrastructure
 # install: terraform aws uv/uvx docker node python3 openssl drawio tflint checkov trivy betterleaks(or gitleaks)  (see §1.0)
+# Stage 3b only (skip for a Terraform-only stack): "$GUIDE"/.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run
 mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
-for s in init-project spec-architect iac-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
   ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
 for wf in "$GUIDE"/.claude/workflows/*.js; do
   ln -sfn "$wf" ~/.claude/workflows/"$(basename "$wf")"          # /infra-review reads ~/.claude/workflows/
 done
-for a in infra-reviewer cost-optimizer security-auditor incident-responder; do
+for a in infra-reviewer cost-optimizer security-auditor ansible-reviewer incident-responder; do
   ln -sfn "$GUIDE/.claude/agents/$a.md" ~/.claude/agents/$a.md   # reviewer agents for /infra-review
 done
 echo 'export TF_MODULE_LIB="$HOME/Documents/Devops/terraforms/custom-infrastructure"' >> ~/.bash_profile && source ~/.bash_profile
@@ -963,6 +1039,10 @@ claude --mcp-config ~/.claude/spec-mcp.json                # spec session with a
 terraform apply tfplan                                     # you press it
 bash scripts/e2e-test.sh                                   # functional verify (poll, negative tests, self-cleanup — Step 3 §5)
 #   lab teardown when done: terraform plan -destroy -out=tfplan-destroy && terraform apply tfplan-destroy
+# --- G3b: ONLY if the stack has hosts to configure. Skip for serverless/managed. ---
+/ansible-implement docs/runbooks/<name>.md ansible/        # G3b: role + --check --diff
+cd ansible && ansible-playbook site.yml --limit <host> --diff   # YOU run it...
+cd ansible && ansible-playbook site.yml --limit <host> --diff   # ...twice; 2nd must be changed=0
 /infra-review environments/dev-care-hub                    # G4: parallel review (add --deep = loop-until-dry)
 #   add --live to also check the DEPLOYED stack read-only (drift + live posture; read-only profile → no prompts)
 /infra-document environments/dev-care-hub                  # G5: living doc + validated drawio + auto-exported PNG
@@ -993,12 +1073,23 @@ bash scripts/e2e-test.sh                                   # functional verify (
       [ ] greenfield: live IAM policies through Access Analyzer · [ ] lab: teardown planned
       (idle-floor services bill hourly — Step 3 §5)
 
+**G3b (after /ansible-implement — skip if the stack has no hosts)**
+
+- [ ] step→module map agreed; every surviving `command`/`shell` justified and carrying
+      `creates:`/`removes:`/`changed_when:` · [ ] `ansible-lint --profile production` clean (not
+      SKIPPED — `verify.sh` exiting 3 is INCONCLUSIVE, not a pass) · [ ] `--check --diff` read line
+      by line, against **one** host
+- [ ] secrets vaulted or coming from Secrets Manager/SSM; `.example` twins committed, filled files
+      gitignored · [ ] **you** ran the playbook twice and the second run reported `changed=0`
+
 **G4 (after /infra-review)**
 
 - [ ] No Critical left · [ ] High handled (or accepted with reason) · [ ] chosen cost savings
       applied · [ ] re-review clean · [ ] apply + commit
 - [ ] deployed already? optionally `--live` (read-only drift + live-posture check; run under a
-      read-only profile to skip prompts safely — Step 4 "review the live stack")
+      read-only profile to skip prompts safely — Step 4 "review the live stack"). `--live` is
+      Terraform/AWS-only — on an Ansible tree there is nothing for it to inspect
+- [ ] mixed repo? the report names the stack it reviewed — check it actually covered both
 
 **G5 (after /infra-document)**
 
@@ -1032,6 +1123,10 @@ bash scripts/e2e-test.sh                                   # functional verify (
 | Stage 5 reports "PNG export failed"                                   | No drawio CLI / no X server / Electron sandbox error. Install draw.io desktop (§1.0); headless machines: `apt install xvfb` (the skill auto-retries with `xvfb-run -a` and `--no-sandbox`). Worst case: export manually from draw.io — the doc keeps the Mermaid mirror until you do.       |
 | Applied fine, but events/records aren't flowing                       | Usually eventual consistency, not a bug: CloudTrail→EventBridge takes 20 s–3 min; a new DynamoDB-stream mapping takes ~1 min to activate (and `LATEST` **skips** writes made before activation — prefer `TRIM_HORIZON` with idempotent consumers). Functional tests must poll with a timeout, never fail fast. |
 | Long pause mid-run and the lab is burning money                       | Idle-floor services (aoss ≈$6/day, NAT, ALB, provisioned RDS) bill hourly while they exist. `terraform plan -destroy` → `apply tfplan-destroy`, resume later — state + code make the rebuild one apply (Step 3 §5).                                                                          |
+| Every `.yml` edit comes back with a wall of lint findings | The PostToolUse ansible hook is firing where it shouldn't. It only runs when `.ansible-lint` exists in the project root — if the noise is real findings, fix them; if it is line-length/truthy noise, `.yamllint` is missing or not being read (copy it from `knowledge/templates/ansible/dot-yamllint`). Note `ansible-lint` embeds yamllint and reports it as `yaml[*]` **errors** under the production profile: make a rule advisory via `warn_list` in `.ansible-lint`, **not** `level:` in `.yamllint`. |
+| `--syntax-check` fails with "couldn't resolve module/action 'amazon.aws.…'" | The collection isn't on the search path. Usually `collections_path` set in `ansible.cfg` (it **replaces** the default list rather than extending it, hiding `~/.ansible/collections`) — remove the key. Otherwise run `ansible-galaxy collection install -r requirements.yml`, and check `ansible --version` is ≥ 2.17: `amazon.aws >=9` / `community.general >=10` declare `requires_ansible: >=2.17`. |
+| Ansible gates all report SKIPPED, or `verify.sh` exits 3 | The toolchain isn't installed — that is INCONCLUSIVE, never a pass. `.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run`, then run it for real. If the tools install but stay "command not found": pyenv needs `pyenv rehash`, pipx needs a new shell. |
+| `/infra-review` says "contains neither Terraform nor Ansible" | Wrong target. The preflight looks for `*.tf` and for `ansible.cfg` / `site.yml` / `roles/*/tasks/` / `playbooks/` / `group_vars/`. Point it at the repo root for a mixed repo, or at the env dir for Terraform only. |
 | `/infra-review --live` still prompts on some AWS reads                 | The shipped `.claude/settings.json` bundle auto-approves the common read verbs, but a read outside it (or a stale copied `settings.json`) will prompt. Quick fix: add `"Bash(aws *)"` to `.claude/settings.local.json` (personal, gitignored) — safe because `--live` runs under the read-only `.mcp.json` profile. Never use `--dangerously-skip-permissions` (drops the destroy/apply guard). If it prompts because `.mcp.json` has **no** AWS profile, configure the read-only MCP profile ([`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md)) first. See Step 4 "review the live stack". |
 
 ---
@@ -1066,8 +1161,15 @@ A: No. It stops at `terraform plan` (G3). You run `apply`. CI/CD deployment is t
 `devops-engineer` (GitHub Actions OIDC) — kept separate so you stay in control.
 
 **Q: What if the project isn't Terraform/AWS?**
-A: `/spec-architect` and `/init-project` still work (init detects other stacks). `/iac-implement` is
-currently specialized for Terraform + this AWS module library.
+A: `/spec-architect` and `/init-project` work for any stack (init detects it). For **configuration
+management there is a full track**: `/ansible-implement` (G3b) authors and verifies, `/infra-review`
+(G4) reviews it with the `ansible-reviewer` agent, `/infra-document` (G5) documents it in §4.1, and
+`/secret-scan` (G6) was never stack-specific. `/iac-implement` itself remains specialized for
+Terraform + this AWS module library — it is built on `TF_MODULE_LIB` and `MODULES.md`.
+
+**Q: Terraform *and* Ansible in one repo — two reviews?**
+A: No. One `/infra-review` at the repo root detects both and runs all four reviewers into a single
+report. Pointing it at `environments/<env>` instead reviews only the Terraform under that path.
 
 **Q: Difference between this file and `devops-workflow.md`?**
 A: `devops-workflow.md` = short reference map. This file = detailed practical guide with an example.

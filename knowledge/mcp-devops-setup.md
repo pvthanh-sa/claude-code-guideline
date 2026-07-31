@@ -524,6 +524,12 @@ Official server from Grafana Labs. Prometheus, Loki, dashboards.
 
 ### 6.1 Ansible MCP Server (Official — Red Hat)
 
+> **Not wired into `/init-project`, deliberately.** This is the **AAP** (Ansible Automation Platform)
+> server: it talks to a Tower/AAP controller and needs `AAP_BASE_URL` + `AAP_OAUTH_TOKEN`. The
+> pipeline's Ansible track (`/ansible-implement`, gate G3b) is plain **ansible-core over SSH**, which
+> has no controller to point this at — adding it would only write a placeholder nobody can fill. Add
+> it by hand if the project actually runs AAP.
+
 Requires Ansible Automation Platform (AAP).
 
 **`.mcp.json`:**

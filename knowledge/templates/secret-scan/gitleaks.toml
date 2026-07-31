@@ -23,6 +23,13 @@ paths = [
 regexes = [
   '''<your-[a-z0-9-]+>''',
   '''EXAMPLE|CHANGEME|REPLACE_ME|dummy|placeholder''',
+  # Ansible Vault ciphertext. A vaulted file is a header plus pages of high-entropy hex, so
+  # entropy rules fire on every single one. The content is ALREADY encrypted — that is the
+  # point of committing it — so a hit here is noise, not a leak.
+  # This does NOT weaken the gate for Ansible: the real risk is a secret sitting in the
+  # PLAINTEXT half of the vars/vault split (group_vars/<g>/vars, host_vars, a template), and
+  # those files carry no $ANSIBLE_VAULT header, so they are still scanned normally.
+  '''\$ANSIBLE_VAULT;[0-9.]+;AES256''',
 ]
 
 # To intentionally ignore a specific finding, add its fingerprint to a

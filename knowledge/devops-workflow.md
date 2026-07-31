@@ -1,4 +1,4 @@
-# DevOps Workflow — Spec → Init → IaC → Review
+# DevOps Workflow — Spec → Init → IaC → Configure → Review
 
 A **human-in-the-loop** pipeline for the Solution Architect / SRE / Security Engineer roles,
 built on Claude Code Core. It chains the existing skills, agents, and rules into one
@@ -32,10 +32,17 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
    │ 3. IAC            │
    │   /iac-implement   │   reuse/author modules → scaffold env → CI gate → fmt/validate/tflint/checkov/trivy/plan
    └───┬────────────────┘
+       │  (you run `terraform apply tfplan`)
+       │
+   ┌───▼────────────────┐   ── G3b ─►  you approve the role + its --check --diff, then YOU run it
+   │ 3b. CONFIGURE      │   optional — only when the stack has hosts to configure
+   │   /ansible-implement│  runbook/bash → idempotent role → yamllint/syntax/ansible-lint → --check --diff
+   └───┬────────────────┘
        │
    ┌───▼────────────────┐   ── G4 ──►  you approve the report → go / fix / no-go
    │ 4. REVIEW         │
-   │   /infra-review    │   PARALLEL Workflow: security + infra + cost → one report
+   │   /infra-review    │   PARALLEL Workflow, stack-aware: security + infra + cost (TF)
+   │                    │   and/or security + ansible (idempotency, secrets, targeting) → one report
    └───┬────────────────┘
        │
    ┌───▼────────────────┐   ── G5 ──►  you approve the document + diagram
@@ -50,9 +57,9 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
 ```
 
 > **Sessions:** Stage 1 runs in a throwaway session (`claude --mcp-config …`); Stage 2 needs its own
-> session in the new project dir, then a **restart** to load `.claude/`. **Stages 3 → 4 → 5 → 6 all
-> run in that one project session** — no restart between them (and the in-session context carries the
-> review results into the doc). Use `/compact`, not a new session, if it gets long.
+> session in the new project dir, then a **restart** to load `.claude/`. **Stages 3 → 3b → 4 → 5 → 6
+> all run in that one project session** — no restart between them (and the in-session context carries
+> the review results into the doc). Use `/compact`, not a new session, if it gets long.
 
 ---
 
@@ -63,13 +70,17 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
 | **G1** | `/spec-architect` | `docs/specs/<name>.spec.md` + list of open decisions                       | Is the spec right? Services/cost/SLO OK?                                   | create project folder → `/init-project`                   |
 | **G2** | `/init-project`   | `CLAUDE.md` (tracked) + `.claude/` & `.mcp.json` (**gitignored** — public-repo safe)      | Stack detected correctly? CLAUDE.md correct? Fill `.mcp.json` placeholders | `/add-dir` custom-infra → `/iac-implement <spec>`         |
 | **G3** | `/iac-implement`  | `terraform plan` output (NO apply)                                         | Plan correct? Resources sensible? Right modules reused?                    | you run `terraform apply tfplan` OR `/infra-review <env>`; after apply: scripted functional verify + (labs) same-day teardown |
-| **G4** | `/infra-review`   | one merged report (severity + savings + go/no-go), saved to `docs/reviews/<env>-<date>.md`; add `--live` after deploy for a read-only drift + live-posture check | Which items to fix? Go or no-go?                                           | ask Claude to fix specific items, then `/infra-document`  |
+| **G3b** | `/ansible-implement` *(optional)* | role/playbook code + the step→module map + a reviewed `--check --diff` | Does the mapping hold? Is the diff what you expect? Which steps stayed manual? | **you** run `ansible-playbook … --limit <host> --diff` twice (second must be `changed=0`), paste both back |
+| **G4** | `/infra-review`   | one merged report (severity + savings + go/no-go), saved to `docs/reviews/<env>-<date>.md`; stack-aware roster; add `--live` (Terraform/AWS only) after deploy for a read-only drift + live-posture check | Which items to fix? Go or no-go?                                           | ask Claude to fix specific items, then `/infra-document`  |
 | **G5** | `/infra-document` | `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (validator-gated) + auto-exported `infra.png` + `README.md` | Doc accurate? Diagram correct? README clear?                              | review doc + PNG, commit (fallback: export PNG + delete Mermaid) |
 | **G6** | `/secret-scan`    | scan result + installed guardrail (Betterleaks/Gitleaks)                   | Clean? any real leak to rotate?                                            | `git push` (pre-push hook + CI re-scan as backstop)       |
 
 > **Safety invariant:** `settings.json` (copied into the project by `/init-project` if absent)
-> denies `terraform destroy` and `terraform apply -auto-approve`. No skill in the pipeline
-> auto-`apply`s or auto-commits — it always stops at a gate for you to decide.
+> denies `terraform destroy`, `terraform apply -auto-approve`, and ad-hoc `ansible <pattern> -m …`;
+> `ansible-playbook` is deliberately not allow-listed at all (prefix matching cannot express "only
+> with `--check`"). No skill in the pipeline auto-`apply`s, runs a playbook against a host, or
+> auto-commits — it always stops at a gate for you to decide. Treat the permission list as a
+> speed-bump, not a boundary: it cannot see through `bash -c`, `env`, or `xargs`.
 
 ---
 
@@ -80,7 +91,8 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
 | 1. Spec     | `spec-architect`, `cloud-architect`   | —                                                                                      | `well-architected`, `aws-pricing`, `aws-knowledge`                | `security.md`                                         |
 | 2. Init     | `init-project`                        | (copies `infra-reviewer`, `cost-optimizer`, `security-auditor`)                        | `aws-api`, `terraform`, `well-architected`, …                     | all copied rules                                      |
 | 3. IaC      | `iac-implement`, `terraform-engineer` | `infra-reviewer` (quick check while writing)                                           | `terraform`, `iac`, `aws-api`                                     | `terraform.md`, `security.md`, `docker.md`, `cicd.md` |
-| 4. Review   | `infra-review` (writes `docs/reviews/`) | **Workflow `infra-review`** → `security-auditor` + `infra-reviewer` + `cost-optimizer` | `aws-api`, `cloudwatch`, `iam`, `aws-pricing`, `well-architected` | `security.md`, `terraform.md`                         |
+| 3b. Configure | `ansible-implement`, `ansible-engineer` | —                                                                                    | **none** (the catalog's `ansible` server is Red Hat AAP — not this stack) | `ansible.md`, `security.md`, `cicd.md`      |
+| 4. Review   | `infra-review` (writes `docs/reviews/`) | **Workflow `infra-review`**, roster by stack → `security-auditor` + `infra-reviewer` + `cost-optimizer` (TF) and/or `ansible-reviewer` | `aws-api`, `cloudwatch`, `iam`, `aws-pricing`, `well-architected` | `security.md`, `terraform.md`, `ansible.md`  |
 | 5. Document | `infra-document`                      | —                                                                                      | (optional `aws-api` for live outputs)                             | —                                                     |
 | 6. Secret scan | `secret-scan`                      | external tool: **Betterleaks** (fallback Gitleaks)                                     | —                                                                 | `security.md`, `cicd.md` |
 
@@ -133,14 +145,37 @@ eventually consistent; include negative tests + self-cleanup), run Access Analyz
 tear down the same day with `plan -destroy` → `apply tfplan-destroy` — idle-floor services
 (aoss/NAT/ALB) bill hourly even when unused; destroying and re-applying later is one command.
 
+### Step 3b — Configure the hosts: `/ansible-implement <source> [ansible-dir]`
+
+**Skip this step entirely** for a serverless or managed-service stack. It exists for the case
+Terraform cannot reach: what runs *inside* an EC2 instance or an on-prem box. `<source>` is a spec,
+an ops runbook (`docs/runbooks/*.md` — the richest source), or an existing bash script.
+
+The skill maps every source step to a **native module** (a step with no module is the only candidate
+for `command`, and then it carries `creates:`/`removes:`/`changed_when:`), scaffolds the role with
+`.example` twins for inventory and vars, installs `.ansible-lint` / `.yamllint` / the
+`ansible-scan.yml` CI gate, then runs `yamllint → --syntax-check → ansible-lint --profile production
+→ --check --diff --limit <one-host>`.
+
+Values that come from infrastructure are **run-time inputs**, never re-declared:
+`-e "vpn_psk=$(terraform -chdir=<env> output -raw tunnel1_psk)"`. Terraform provisions; Ansible
+configures. A request for cloud resources goes back to `/iac-implement`.
+
+**→ Stop at G3b** with the diff. **You** run the playbook — twice, because idempotency is only
+proven by a second *real* run reporting `changed=0`. `--check` cannot prove it: check mode skips
+`command`/`shell`, which is exactly the task class that breaks idempotency.
+
 ### Step 4 — Review before/after deploy: `/infra-review <env-dir>`
 
-Calls the `infra-review` Workflow, which runs **three perspectives in parallel** (security /
-infra-best-practice + waste / cost) and merges them into **one** report with severity + estimated
-savings + a go/no-go recommendation. The report is **saved to `docs/reviews/<env>-<date>.md`** so
-Stage 5 (and later sessions) can read it. A single AI pass isn't exhaustive — add **`--deep`** to
-loop the finders until 2 consecutive rounds find nothing new (the deterministic baseline is the
-checkov/tflint and gitleaks tool gates).
+Calls the `infra-review` Workflow, which runs several perspectives **in parallel** and merges them
+into **one** report with severity + estimated savings + a go/no-go recommendation. The roster
+follows what the target actually contains: Terraform → security / infra-best-practice + waste /
+cost; Ansible → security / idempotency + secrets + privilege + targeting safety; a repo with both →
+all four, one report. **This is the review gate for both stacks** — there is no separate Ansible
+review. The report is **saved to `docs/reviews/<env>-<date>.md`** so Stage 5 (and later sessions)
+can read it. A single AI pass isn't exhaustive — add **`--deep`** to loop the finders until 2
+consecutive rounds find nothing new (the deterministic baseline is the checkov/tflint, ansible-lint
+and gitleaks tool gates).
 **→ Stop at G4.** You choose which items to fix; Claude lists the work and waits for your
 confirmation before changing any code.
 
@@ -150,7 +185,10 @@ Derives the as-built architecture from the Terraform module wiring + spec and wr
 document** `docs/infrastructure.md`, an editable AWS-grouped `docs/diagrams/infra.drawio` **gated
 by a stencil/geometry validator**, and an **auto-exported `docs/diagrams/infra.png`** that Claude
 visually verifies (a temporary Mermaid mirror is emitted only when PNG export is impossible on the
-machine). Re-run it whenever the infra changes.
+machine). When an `ansible/` tree exists it adds a **§4.1 Configuration management** table — role,
+what it configures, host group, and the `terraform output` values piped in at run time — because a
+doc that stops at the instance leaves half the system undescribed. Re-run it whenever the infra
+changes.
 **→ Stop at G5.** Review the PNG + doc, then commit (fallback machines: export the PNG manually
 and delete the Mermaid block). Claude does not commit.
 
