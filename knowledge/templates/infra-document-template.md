@@ -88,6 +88,23 @@ flowchart LR
 | `rds` | Aurora cluster + Secrets Manager | Datastore | private |
 | … | … | … | … |
 
+<!-- ### 4.1 — INCLUDE ONLY IF the project has an ansible/ tree. Delete this whole subsection
+     otherwise; a Terraform-only doc must not carry an empty configuration section. -->
+### 4.1 Configuration management (Ansible)
+Terraform provisions the host; Ansible decides what runs on it.
+
+| Role | Configures | Host group | Values from Terraform |
+|------|-----------|------------|----------------------|
+| `<role>` | <packages, services, config files> | `<group>` | `<tf output name>` |
+| … | … | … | … |
+
+**The Terraform → Ansible seam.** Infrastructure values are passed in at run time, never committed
+and never re-declared in Ansible:
+```bash
+ansible-playbook site.yml --limit <group> \
+  -e "<var>=$(terraform -chdir=<env-dir> output -raw <output>)" --check --diff
+```
+
 ## 5. Network
 - **VPC CIDR:** <10.x.0.0/16> · **AZs:** <…>
 - **Subnets:** public (<which>), private (<which>)

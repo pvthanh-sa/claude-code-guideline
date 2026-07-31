@@ -45,8 +45,15 @@ Read the real sources so the document is *as-built*, not aspirational:
    fold its resolved security/cost posture into §7. Pick the newest by date if several exist.
 5. **Live outputs (optional)** — only if already applied and the user confirms: `terraform output`
    for real endpoints/ARNs. Never run apply.
+6. **Configuration layer (only if an `ansible/` tree exists)** — `ansible/site.yml` (which roles run
+   against which groups), `ansible/roles/*/defaults/main.yml` (each role's public interface),
+   `ansible/inventory.ini.example` (the host groups), and any `-e "x=$(terraform output -raw x)"`
+   invocation documented in the project README or runbooks. Terraform provisions the host; Ansible
+   decides what runs on it, and a doc that stops at the instance leaves half the system undescribed.
 
 Build a component list: `module → AWS resource(s) → role → key inputs/outputs → which subnet/tier`.
+When a configuration layer exists, extend it with `ansible role → what it configures → which host
+group → which values arrive from Terraform`.
 
 ## Phase 2: Write `docs/infrastructure.md`
 
@@ -99,6 +106,13 @@ reader should finish §1–§3 with a correct mental model, then use §4–§8 a
   - Keep it tight — a handful of labeled blocks, a few bullets each; push the exhaustive list to §4.
 - §4 Components is the **reference table**; §3 explains, §4 enumerates — don't duplicate prose into
   the table.
+- **§4.1 Configuration management** — include this subsection **only when the project has an
+  `ansible/` tree**; omit it entirely otherwise (a Terraform-only project's doc must come out
+  byte-identical to before this existed). One row per role: *role · what it configures · host group ·
+  values taken from Terraform*. Then one line naming the **seam** — which `terraform output` values
+  are piped in with `-e` at run time — because that seam is the single most misunderstood part of a
+  Terraform + Ansible estate, and it is invisible in both the `.tf` and the role on its own.
+  Provisioning belongs in §4; what runs *inside* the host belongs here.
 - Link out rather than duplicate: spec, review report, dashboards.
 - The template intentionally has **no Operations/runbook or change-log section** — this doc describes
   what the infrastructure *is*, not how to operate it. Keep ops/runbooks in their own doc.
