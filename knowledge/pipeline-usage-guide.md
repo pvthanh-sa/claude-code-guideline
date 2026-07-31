@@ -244,6 +244,13 @@ for t in terraform aws uvx docker tflint checkov trivy python3; do command -v $t
 command -v betterleaks >/dev/null || command -v gitleaks >/dev/null && echo "ok  secret scanner" || echo "FAIL no betterleaks/gitleaks (§1.0)"
 command -v drawio >/dev/null && echo "ok  drawio (Stage 5 PNG auto-export)" || echo "warn no drawio CLI — Stage 5 degrades to manual PNG export + Mermaid mirror (§1.0)"
 command -v openssl >/dev/null && echo "ok  openssl" || echo "warn no openssl — only needed for mTLS projects (mint-certs.sh)"
+echo "== PostToolUse 'terraform fmt' hook (functional test — a present-but-dead hook looks identical) =="
+HK=$( [ -f .claude/settings.json ] && echo .claude/settings.json || echo "$GUIDE/.claude/settings.json" )
+HC=$(python3 -c "import json;print(json.load(open('$HK'))['hooks']['PostToolUse'][0]['hooks'][0]['command'])" 2>/dev/null)
+T=$(mktemp -d); printf 'a  =   1\n' > "$T/x.tf"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/x.tf" | sh -c "$HC" >/dev/null 2>&1
+[ "$(cat "$T/x.tf")" = "a = 1" ] && echo "ok  fmt hook formats on Edit/Write ($HK)" || echo "FAIL fmt hook is dead (no-ops silently) — it must read tool_input.file_path from stdin JSON; there is no \$CLAUDE_FILE env var"
+rm -f "$T/x.tf"; rmdir "$T"
 echo "== spec MCP config =="
 test -f ~/.claude/spec-mcp.json && { grep -q '<your-' ~/.claude/spec-mcp.json && echo "FAIL spec-mcp.json still has <your-> placeholders to fill (§1.4)" || echo "ok  spec-mcp.json filled"; } || echo "FAIL spec-mcp.json missing (§1.4)"
 echo "== AWS creds (read-only MCP profile) =="
