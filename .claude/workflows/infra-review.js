@@ -1,8 +1,8 @@
 export const meta = {
   name: 'infra-review',
-  description: 'Parallel security + infra-best-practice + cost review of a Terraform environment, synthesized into one severity-ranked go/no-go report. Stage 4 of the DevOps pipeline. Pass args.deep=true for loop-until-dry (higher recall: re-runs finders until 2 consecutive rounds find nothing new). Pass args.baseline=<path to the prior report> to label each finding RESOLVED / NEW / STILL-OPEN vs the last review — finders STILL full-scan every run (catches regressions in unchanged files); only synthesis is baseline-aware (no delta-skip). Pass args.note="<what changed>" to record an operator change-note in the report and focus the finders on that change (they still full-scan).',
+  description: 'Parallel stack-aware review of an environment — Terraform, Ansible, or both — synthesized into one severity-ranked go/no-go report. Stage 4 of the DevOps pipeline. The preflight detects which stacks are present and picks the reviewer roster: Terraform gets security + infra-best-practice + cost, Ansible gets security + ansible (idempotency, secrets, privilege, targeting safety), a mixed repo gets all four in one report. Pass args.deep=true for loop-until-dry (higher recall: re-runs finders until 2 consecutive rounds find nothing new). Pass args.baseline=<path to the prior report> to label each finding RESOLVED / NEW / STILL-OPEN vs the last review — finders STILL full-scan every run (catches regressions in unchanged files); only synthesis is baseline-aware (no delta-skip). Pass args.note="<what changed>" to record an operator change-note in the report and focus the finders on that change (they still full-scan).',
   phases: [
-    { title: 'Review', detail: 'security-auditor + infra-reviewer (looped until dry when deep) + cost-optimizer' },
+    { title: 'Review', detail: 'security-auditor + per-stack reviewers (looped until dry when deep) + cost-optimizer' },
     { title: 'Synthesize', detail: 'merge + dedupe + rank by severity, recommend go/no-go' },
   ],
 }
@@ -31,32 +31,51 @@ const noteFocus = NOTE
     `what could regress because of it).`
   : ''
 
-// ---- Preflight: refuse to review a target with no Terraform in it --------------
+// ---- Preflight: detect which stack(s) are present ------------------------------
 // Scripts have no fs access, so a tiny agent checks. Guards against the silent
-// wrong-target failure mode (e.g. args lost → '.') that wastes a full 3-agent run.
+// wrong-target failure mode (e.g. args lost → '.') that wastes a full reviewer run.
+// It also picks the roster: an Ansible-only repo used to abort here with a bare no-go.
 phase('Review')
 const preflight = await agent(
-  `Run: find "${target}" -name '*.tf' -not -path '*/.terraform/*' | head -5. ` +
-  `Return tfFiles (count found, cap 5) and resolvedPath (realpath of the dir; '' if the dir does not exist). Nothing else.`,
+  `In "${target}", run BOTH of these and report the counts:\n` +
+  `  A) find "${target}" -name '*.tf' -not -path '*/.terraform/*' | head -5\n` +
+  `  B) find "${target}" \\( -name ansible.cfg -o -name site.yml -o -path '*/roles/*/tasks/*' ` +
+  `-o -path '*/playbooks/*' -o -path '*/group_vars/*' \\) -not -path '*/.git/*' | head -5\n` +
+  `Return tfFiles (count from A, cap 5), ansibleFiles (count from B, cap 5), and resolvedPath ` +
+  `(realpath of the dir; '' if the dir does not exist). Nothing else.`,
   {
     label: 'preflight',
     model: 'haiku',
     schema: {
       type: 'object',
-      required: ['tfFiles', 'resolvedPath'],
-      properties: { tfFiles: { type: 'number' }, resolvedPath: { type: 'string' } },
+      required: ['tfFiles', 'ansibleFiles', 'resolvedPath'],
+      properties: {
+        tfFiles: { type: 'number' },
+        ansibleFiles: { type: 'number' },
+        resolvedPath: { type: 'string' },
+      },
     },
   }
 )
-if (!preflight || preflight.tfFiles === 0) {
-  log(`ABORT: no .tf files under '${target}' — wrong target? Pass the environment dir explicitly.`)
+const HAS_TF = !!(preflight && preflight.tfFiles > 0)
+const HAS_ANSIBLE = !!(preflight && preflight.ansibleFiles > 0)
+if (!HAS_TF && !HAS_ANSIBLE) {
+  log(`ABORT: no Terraform and no Ansible under '${target}' — wrong target? Pass the directory explicitly.`)
   return {
     recommendation: 'no-go',
-    summary: `Preflight failed: '${target}' (resolved: '${preflight ? preflight.resolvedPath : 'unknown'}') contains no Terraform files. The review did not run — re-invoke with the correct environment directory.`,
+    summary: `Preflight failed: '${target}' (resolved: '${preflight ? preflight.resolvedPath : 'unknown'}') contains neither Terraform (*.tf) nor Ansible (ansible.cfg / site.yml / roles/*/tasks / playbooks / group_vars). The review did not run — re-invoke with the correct directory.`,
     topFindings: [],
     counts: { critical: 0, high: 0, medium: 0, low: 0 },
   }
 }
+
+// The stack drives the reviewer roster AND the noun every prompt uses. Saying "the Terraform
+// infrastructure" to a reviewer looking at a role tree makes it hunt for something that isn't there.
+const STACK = HAS_TF && HAS_ANSIBLE ? 'both' : (HAS_TF ? 'terraform' : 'ansible')
+const stackNoun = STACK === 'both'
+  ? 'Terraform infrastructure and Ansible configuration'
+  : (STACK === 'terraform' ? 'Terraform infrastructure' : 'Ansible configuration (playbooks, roles, inventory)')
+log(`stack: ${STACK} (tf=${preflight.tfFiles}, ansible=${preflight.ansibleFiles}) — reviewing as "${stackNoun}"`)
 
 // ---- Structured output schemas -------------------------------------------------
 const FINDINGS = {
@@ -158,7 +177,7 @@ const REPORT = {
           title: { type: 'string' },
           location: { type: 'string' },
           remediation: { type: 'string' },
-          source: { type: 'string', enum: ['security', 'infra', 'cost'] },
+          source: { type: 'string', enum: ['security', 'infra', 'ansible', 'cost'] },
           waCategory: {
             type: 'string',
             enum: ['iam', 'detective-controls', 'infrastructure-protection', 'data-protection', 'incident-response'],
@@ -215,11 +234,22 @@ const acceptedRiskNote =
   `cites the spec section and its stated before-production precondition. Only mark a finding ` +
   `accepted on an explicit documented match — never infer acceptance from code comments alone.`
 
+// Ansible widens the security surface: plaintext secrets in group_vars, an unencrypted vault,
+// a disabled host_key_checking, and blast radius are all security findings a Terraform-shaped
+// prompt would never look for.
+const secAnsibleNote = HAS_ANSIBLE
+  ? ` The target also contains Ansible: additionally check for plaintext secrets in group_vars/` +
+    `host_vars/templates, unencrypted vault files, missing no_log on secret-handling tasks, ` +
+    `host_key_checking disabled, hosts: all / unbounded blast radius, unpinned get_url downloads ` +
+    `(no checksum), and world-readable modes on files that carry credentials.`
+  : ''
+
 const secPrompt = (round) =>
-  `You are auditing the Terraform infrastructure under "${target}". Perform a full security ` +
+  `You are auditing the ${stackNoun} under "${target}". Perform a full security ` +
   `audit (secrets, IAM least-privilege, encryption at rest/in transit, network/SG exposure, ` +
   `container security, CI/CD/OIDC). Report every finding with severity, file:line location, ` +
-  `risk, and remediation. Also classify each finding by its AWS Well-Architected Security Pillar ` +
+  `risk, and remediation.` + secAnsibleNote +
+  ` Also classify each finding by its AWS Well-Architected Security Pillar ` +
   `category in "waCategory": iam (identity & access) | detective-controls (logging/monitoring/audit, ` +
   `e.g. CloudTrail, Config, flow logs) | infrastructure-protection (network/SG/WAF/boundaries) | ` +
   `data-protection (encryption, secrets, key mgmt) | incident-response (recoverability, alarms, runbooks).` +
@@ -234,6 +264,25 @@ const infraPrompt = (round) =>
   `instances, redundant NAT, missing lifecycle policies). Report every finding with severity and file:line.` +
   acceptedRiskNote +
   (round > 1 ? ` This is review ROUND ${round}: surface only issues not already obvious — subtle or cross-module ones.` : '') +
+  noteFocus
+
+// Ansible-specific judgment pass. Deliberately NOT a linter re-run: yamllint / --syntax-check /
+// ansible-lint already ran at G3b, and the ansible-reviewer agent is told to skip what they cover.
+const ansiblePrompt = (round) =>
+  `You are reviewing the Ansible configuration under "${target}" — playbooks, roles, inventory, ` +
+  `group_vars/host_vars, templates, ansible.cfg. Judgment findings only: the deterministic gates ` +
+  `(yamllint, --syntax-check, ansible-lint --profile production) run separately at G3b, so do not ` +
+  `re-report what a linter already flags. Cover idempotency (command/shell without ` +
+  `creates/removes/changed_when; changed_when: true, which makes the second-run changed=0 proof ` +
+  `impossible; unreachable handlers), secret handling (vars/vault split, no_log, nothing written ` +
+  `plaintext to a target), privilege scope (play-wide vs task-scoped become), file permissions and ` +
+  `self-lockout (missing validate: on sshd/sudoers/nginx configs, firewall rules that can cut the ` +
+  `control node's own access), targeting safety (hosts: all, missing serial:, mixed prod/non-prod ` +
+  `groups), and structure (FQCN, role-prefixed vars, defaults vs vars, pinned collections). ` +
+  `Report every finding with severity, file:line location, risk, and remediation. NEVER run a ` +
+  `playbook — read only.` +
+  acceptedRiskNote +
+  (round > 1 ? ` This is review ROUND ${round}: surface only issues not already obvious — subtle, cross-role, or second-order ones.` : '') +
   noteFocus
 
 const costPrompt =
@@ -257,26 +306,32 @@ const incomplete = new Set()
 
 phase('Review')
 for (let round = 1; round <= MAX_ROUNDS; round++) {
-  const tasks = [
-    () => agent(secPrompt(round), { agentType: 'security-auditor', label: `security r${round}`, phase: 'Review', schema: FINDINGS }),
-    () => agent(infraPrompt(round), { agentType: 'infra-reviewer', label: `infra r${round}`, phase: 'Review', schema: FINDINGS }),
+  // Roster by stack. Named, not positional: the set of reviewers now varies, and index-based
+  // unpacking would silently misattribute findings the first time a stack combination changes.
+  const roster = [
+    { source: 'security', agentType: 'security-auditor', prompt: secPrompt(round) },
   ]
-  if (round === 1) {
+  if (HAS_TF) roster.push({ source: 'infra', agentType: 'infra-reviewer', prompt: infraPrompt(round) })
+  if (HAS_ANSIBLE) roster.push({ source: 'ansible', agentType: 'ansible-reviewer', prompt: ansiblePrompt(round) })
+
+  const tasks = roster.map((r) => () =>
+    agent(r.prompt, { agentType: r.agentType, label: `${r.source} r${round}`, phase: 'Review', schema: FINDINGS })
+  )
+  // Cost is Terraform-only (instance classes, NAT, storage tiers) and round-1 only.
+  const runCost = round === 1 && HAS_TF
+  if (runCost) {
     tasks.push(() => agent(costPrompt, { agentType: 'cost-optimizer', label: 'cost', phase: 'Review', schema: COST }))
   }
   const res = await parallel(tasks)
-  const sec = res[0]
-  const inf = res[1]
-  if (round === 1) cost = res[2]
-  // A null result = that reviewer didn't run (missing agentType or terminal error). Record it.
-  if (!sec) incomplete.add('security-auditor')
-  if (!inf) incomplete.add('infra-reviewer')
-  if (round === 1 && !cost) incomplete.add('cost-optimizer')
+  if (runCost) cost = res[roster.length]
 
-  const tagged = [
-    ...(((sec && sec.findings) || []).map((f) => ({ ...f, source: 'security' }))),
-    ...(((inf && inf.findings) || []).map((f) => ({ ...f, source: 'infra' }))),
-  ]
+  // A null result = that reviewer didn't run (missing agentType or terminal error). Record it.
+  roster.forEach((r, i) => { if (!res[i]) incomplete.add(r.agentType) })
+  if (runCost && !cost) incomplete.add('cost-optimizer')
+
+  const tagged = roster.flatMap((r, i) =>
+    (((res[i] && res[i].findings) || []).map((f) => ({ ...f, source: r.source })))
+  )
   const fresh = tagged.filter((f) => {
     const k = key(f)
     if (seen.has(k)) return false
@@ -304,7 +359,7 @@ if (incomplete.size) {
     recommendation: 'go-with-fixes',
     summary: `INCOMPLETE REVIEW — the following reviewer(s) did not run: ${which}. ` +
       `Likely cause: the agent definition(s) are not resolvable — install them user-level so /infra-review ` +
-      `works in any project (symlink ~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,incident-responder}.md ` +
+      `works in any project (symlink ~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,ansible-reviewer,incident-responder}.md ` +
       `per pipeline-usage-guide §1.1), or run /init-project to copy them into this project's .claude/agents/; ` +
       `failing that the agent hit a terminal error. The findings below cover only the reviewers that DID run, so absence of ` +
       `findings here does NOT mean clean. Re-run /infra-review after restoring the agents before trusting a go.`,
@@ -359,7 +414,9 @@ const report = await agent(
   `Critical/High items in mustFixBeforeApply. Set each topFindings.source from the finding's "source" field, ` +
   `and carry over each security finding's "waCategory". Also tally security findings per ` +
   `Well-Architected Security category into waSecurityCounts so the human sees coverage across the pillar.\n\n` +
-  `FINDINGS (security+infra, deduped over ${DEEP ? 'multiple rounds' : '1 round'}):\n${JSON.stringify(findings)}\n\n` +
+  `The target's stack is: ${STACK} (${stackNoun}). Say so in the summary so the reader knows which ` +
+  `reviewers ran${HAS_TF ? '' : ' — cost analysis is Terraform-only and did not run for this target'}.\n\n` +
+  `FINDINGS (deduped over ${DEEP ? 'multiple rounds' : '1 round'}, source ∈ security|infra|ansible):\n${JSON.stringify(findings)}\n\n` +
   `COST:\n${JSON.stringify(cost)}` + baselineNote + noteNote,
   { label: 'synthesize', phase: 'Synthesize', schema: REPORT },
 )

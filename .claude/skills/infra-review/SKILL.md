@@ -1,6 +1,6 @@
 ---
 name: infra-review
-description: 'Stage 4 of the DevOps pipeline. Run a parallel security + infra-best-practice + cost review of a Terraform environment via the infra-review Workflow, save the report to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go report — baseline-aware on re-reviews, labeling each finding RESOLVED/NEW/STILL-OPEN vs the prior report — optionally cross-checking the deployed stack read-only with --live (drift + live-only findings), and STOP at human gate G4. Never edits code or applies without explicit approval.'
+description: 'Stage 4 of the DevOps pipeline. Run a parallel, stack-aware review of an environment via the infra-review Workflow — Terraform gets security + infra-best-practice + cost, Ansible gets security + idempotency/secrets/privilege/targeting, a mixed repo gets all four in one report — save it to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go — baseline-aware on re-reviews, labeling each finding RESOLVED/NEW/STILL-OPEN vs the prior report — optionally cross-checking the deployed stack read-only with --live (drift + live-only findings), and STOP at human gate G4. Never edits code or applies without explicit approval.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Workflow
 argument-hint: '[target-dir] [--deep] [--live] [--baseline <prior-report> | --no-baseline] [--note "<what changed>"]'
@@ -8,15 +8,23 @@ argument-hint: '[target-dir] [--deep] [--live] [--baseline <prior-report> | --no
 
 # Infra Review — Stage 4 (Review gate)
 
-Run the final review across three independent perspectives **in parallel**, then hand the
+Run the final review across several independent perspectives **in parallel**, then hand the
 human one consolidated report to decide go / fix / no-go.
 
 > **Human gate G4:** This skill produces a report and **STOPS**. It does not fix code, does not
 > `terraform apply`, does not commit. After presenting the report, ask the human which findings
 > to address — and only then, in a follow-up, make changes they approve.
 
+**This is the review gate for BOTH stacks.** The workflow's preflight detects what the target
+actually contains and picks the roster: Terraform → `security-auditor` + `infra-reviewer` +
+`cost-optimizer`; Ansible → `security-auditor` + `ansible-reviewer` (idempotency, secrets,
+privilege scope, targeting safety); a repo with both → all four, one report. There is no separate
+Ansible review gate — `/ansible-implement` (G3b) hands off to here.
+
 **Target dir:** first non-flag token of `$ARGUMENTS` (e.g. `environments/tokyo-dev`). Default: current dir.
-Confirm the target before running.
+Confirm the target before running — and point it at the directory that holds the stack you mean.
+For a mixed repo, the repo root reviews both; an `environments/<env>` dir reviews only the
+Terraform under it.
 
 **`--deep` flag:** if `$ARGUMENTS` contains `--deep`, run in **loop-until-dry** mode — the workflow
 re-runs the finders for several rounds and stops only after 2 consecutive rounds surface no new
@@ -47,13 +55,18 @@ report, gone now), **STILL-OPEN** (in both), or **NEW** (first seen this run) �
   findings delta (baseline alone sees which findings changed, not what code you touched). If the
   operator typed `--note "<text>"` (or said it in chat at invocation), parse it out and pass `args.note`.
 
-**`--live` flag (optional — review the deployed stack, not just the code).** The three finders read
+**`--live` flag (optional — review the deployed stack, not just the code).** The finders read
 **code + plan**; they cannot see what actually got applied. When the env is deployed and you want the
 review to also check reality, pass `--live`: the skill adds a **read-only** live-inspection pass (see
 Phase 1.5) that catches what static review structurally can't — **drift** (console/CLI changes not in
 code), resources created **outside** Terraform, and posture that's only observable live (actual
 public-access blocks, encryption state, attached IAM, SG ingress). Skip it (default) when the stack
 isn't applied yet or you're reviewing pure code.
+
+> `--live` is **Terraform/AWS-only** — it is built on `terraform plan -refresh-only` and read-only
+> `aws` calls. On an Ansible-only target it has nothing to inspect: say so and run without it. The
+> Ansible equivalent of drift detection is a `--check --diff` run against the host, which is the
+> human's to run (G3b), not this gate's.
 
 - **Zero per-review setup — the skill resolves the profile itself.** It reads the AWS profile already
   configured in the project's **`.mcp.json`** (the advisory-MCP identity) and passes it as **`--profile
@@ -110,10 +123,12 @@ Then call the `Workflow` tool with:
   discovers user-level workflows; `scriptPath` always works)
 - `args`: `{ "path": "<target-dir>", "deep": <true if --deep, else false>, "baseline": "<auto-detected prior report — see the Baseline section above; omit/empty on a first or --no-baseline run>", "note": "<--note text if the operator gave one, else omit>" }`
 
-It fans out three reviewers concurrently — `security-auditor`, `infra-reviewer`,
-`cost-optimizer` — and synthesizes their findings into one structured report
-(severity counts, top findings, estimated monthly savings, go/no-go, must-fix-before-apply).
-The user can watch live progress with `/workflows`.
+Its preflight counts `*.tf` and Ansible markers (`ansible.cfg`, `site.yml`, `roles/*/tasks/`,
+`playbooks/`, `group_vars/`), then fans the matching reviewers out concurrently — `security-auditor`
+always, plus `infra-reviewer` + `cost-optimizer` when Terraform is present and `ansible-reviewer`
+when Ansible is — and synthesizes their findings into one structured report (severity counts, top
+findings, estimated monthly savings, go/no-go, must-fix-before-apply). It aborts only when the
+target holds neither stack. The user can watch live progress with `/workflows`.
 
 **Fallbacks (in order) if `$WF` is missing or `scriptPath` doesn't run:**
 1. Resolve from the symlinked skill instead (works even if the one-time workflow symlink was skipped):
@@ -123,11 +138,14 @@ The user can watch live progress with `/workflows`.
    ```
 2. `Read` the file at `$WF` and pass its contents to the `Workflow` tool via the `script` parameter
    (inline), with the same `args`.
-3. If the `Workflow` tool is entirely unavailable, run the three agents sequentially via the Agent
-   tool (security-auditor → infra-reviewer → cost-optimizer) and synthesize the report yourself.
+3. If the `Workflow` tool is entirely unavailable, run the stack's agents sequentially via the Agent
+   tool (Terraform: security-auditor → infra-reviewer → cost-optimizer; Ansible: security-auditor →
+   ansible-reviewer) and synthesize the report yourself. Say in the report that the workflow's
+   incomplete-reviewer guard did **not** run, so a missing agent would not have been caught.
 
-> Note: the three agent types must exist in the current project's `.claude/agents/`
-> (init-project copies them for AWS/security projects). If missing, use fallback 2.
+> Note: the agent types for the detected stack must exist in the current project's `.claude/agents/`
+> or user-level in `~/.claude/agents/` (init-project copies them; Guide §1.1 symlinks them). If
+> missing, use fallback 2 — the workflow refuses to emit "go" when a reviewer didn't run.
 
 ## Phase 1.5 (optional, `--live`): read-only live-stack inspection
 
