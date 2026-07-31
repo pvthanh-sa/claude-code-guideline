@@ -63,6 +63,7 @@ After reading, build a detection matrix. For each item below, note **yes / no / 
 | Category             | Detected? | Evidence                                  |
 | -------------------- | --------- | ----------------------------------------- |
 | Terraform            |           | .tf files found?                          |
+| Ansible / config-mgmt |          | ansible.cfg, site.yml, roles/*/tasks/, playbooks/, group_vars/, requirements.yml? |
 | Docker               |           | Dockerfile / docker-compose?              |
 | Kubernetes / Helm    |           | k8s/ charts/ manifests?                   |
 | ECS (AWS)            |           | ecs in terraform or README?               |
@@ -86,6 +87,15 @@ After reading, build a detection matrix. For each item below, note **yes / no / 
 
 - Glob `**/*.tf` and `**/*.tfvars`
 - Identify: AWS resources used, environments (dirs under `environments/`, `envs/`), modules, backend
+
+**Ansible (if detected):**
+
+- Read `ansible/ansible.cfg`, `ansible/requirements.yml`, `ansible/site.yml`
+- Identify: roles, inventory style (static INI vs `*.aws_ec2.yml` dynamic), group layout, whether a
+  `group_vars/*/vault` split is in use, and whether the project is Terraform-first (the roles should
+  consume `terraform output`, not create cloud resources)
+- Careful with the glob: `**/*.yml` in an Ansible repo also matches GitHub Actions workflows and
+  docker-compose. Anchor on `roles/*/tasks/`, `playbooks/`, `group_vars/`, `host_vars/`
 
 **Docker (if detected):**
 
@@ -202,6 +212,10 @@ cpx "$GUIDELINE_CLAUDE/skills/secure-code-guardian" ".claude/skills/"
 cpx "$GUIDELINE_CLAUDE/skills/terraform-engineer" ".claude/skills/"
 cpx "$GUIDELINE_CLAUDE/skills/cloud-architect"    ".claude/skills/"
 
+# If Ansible / configuration management detected
+# (/ansible-implement, gate G3b, is a pipeline skill — symlinked user-level, never copied)
+cpx "$GUIDELINE_CLAUDE/skills/ansible-engineer" ".claude/skills/"
+
 # If Kubernetes / Helm detected
 cpx "$GUIDELINE_CLAUDE/skills/kubernetes-specialist" ".claude/skills/"
 
@@ -231,6 +245,9 @@ cpx "$GUIDELINE_CLAUDE/skills/chaos-engineer" ".claude/skills/"
 # If Terraform or any IaC detected
 cpx "$GUIDELINE_CLAUDE/agents/infra-reviewer.md" ".claude/agents/"
 
+# If Ansible detected — /infra-review (G4) fans this one out alongside security-auditor
+cpx "$GUIDELINE_CLAUDE/agents/ansible-reviewer.md" ".claude/agents/"
+
 # If AWS project (ECS, EKS, RDS, Lambda, etc.)
 cpx "$GUIDELINE_CLAUDE/agents/cost-optimizer.md"    ".claude/agents/"
 cpx "$GUIDELINE_CLAUDE/agents/incident-responder.md" ".claude/agents/"
@@ -247,6 +264,9 @@ cpx "$GUIDELINE_CLAUDE/rules/security.md" ".claude/rules/"
 
 # If Terraform detected
 cpx "$GUIDELINE_CLAUDE/rules/terraform.md" ".claude/rules/"
+
+# If Ansible detected
+cpx "$GUIDELINE_CLAUDE/rules/ansible.md" ".claude/rules/"
 
 # If Kubernetes / Helm detected
 cpx "$GUIDELINE_CLAUDE/rules/kubernetes.md" ".claude/rules/"
@@ -297,6 +317,7 @@ detected technology isn't here, look it up by name in the catalog / setup doc an
 | Any AWS service detected (ECS/EKS/RDS/Lambda/etc.) | `aws-api`, `aws-knowledge`, `cloudwatch`, `iam` |
 | New project / architecture design phase            | `well-architected`, `aws-pricing`               |
 | Terraform detected                                 | `terraform`, `iac`                              |
+| Ansible detected                                   | **none** — see the note below                   |
 | ECS detected                                       | `ecs`                                           |
 | EKS / Kubernetes detected                          | `eks`                                           |
 | PostgreSQL / Aurora detected                       | `aurora-postgresql`                             |
@@ -309,6 +330,12 @@ detected technology isn't here, look it up by name in the catalog / setup doc an
 | GitLab CI in README                                | `gitlab`                                        |
 | Jenkins in README                                  | `jenkins`                                       |
 | Grafana / Prometheus detected                      | `grafana`                                       |
+
+> **Ansible gets no MCP server, deliberately.** The catalog's `ansible` key is Red Hat's
+> **AAP** (Ansible Automation Platform) server — it needs `AAP_BASE_URL` + `AAP_OAUTH_TOKEN` and
+> talks to a Tower/AAP controller. A plain ansible-core-over-SSH project has no controller to point
+> it at, so adding it would only write a placeholder nobody can fill. Add it **only** if the project
+> actually runs AAP. The absence is a decision, not an oversight.
 
 **Build `.mcp.json` by copying entries from the canonical catalog** (resolve the guideline repo
 the same way Phase 3 does), keeping the `<your-...>` placeholders for the human to fill at G2:
@@ -381,12 +408,20 @@ script; the gate must exist *before* that happens):
   for p in "certs/" "*.pem" "*.key" ".terraform/" "*.tfstate" "*.tfstate.*" "backend-*.hcl"; do
     grep -qxF "$p" .gitignore 2>/dev/null || echo "$p"
   done
+  # Ansible only — the filled inventory/vars carry real hosts and secrets; the .example twins
+  # are what gets committed. Full annotated list: knowledge/templates/ansible/gitignore-snippet.txt
+  for p in ".vault_pass" ".vault_pass.txt" "ansible/.vault_pass*" "ansible/inventory.ini" \
+           "ansible/group_vars/all.yml" "ansible/group_vars/*/vault" "ansible/collections/" "*.retry"; do
+    grep -qxF "$p" .gitignore 2>/dev/null || echo "$p"
+  done
 } >> .gitignore 2>/dev/null
 ```
 
 (`terraform.tfvars` is intentionally NOT ignored — project convention commits it and keeps it
 secret-free; secrets go to Secrets Manager/SSM, account-specific values like ARNs to a gitignored
-override file.)
+override file. The Ansible block is only worth appending when Ansible was detected; `.gitignore`
+has **no inline comments**, so never add a trailing `# …` to a pattern — it becomes part of the
+pattern and silently makes it match nothing.)
 
 `CLAUDE.md` stays **tracked** — it's lightweight project guidance (stack/commands), useful to share
 and not sensitive. (Private team repo and you *want* to commit the skills/agents/rules? Remove
@@ -463,6 +498,24 @@ but you can refresh them on demand.
 - ❌ Never touches `CLAUDE.md` (you may have customized it).
 - ❌ Never touches `.mcp.json` (gitignored, holds local secrets/placeholders).
 - ❌ Never touches `.claude/settings.json` (may hold project-local settings).
+
+> **Consequence, worth stating plainly: a NEW capability added to the guideline repo does not reach
+> an already-initialized project through `--sync`.** When a stack (say Ansible) gains a skill, agent
+> and rule, `--sync` refreshes none of them — they were never installed — and `settings.json` is
+> untouched by sync *and* by re-init (Phase 4 copies it only when absent), so new permissions and
+> hooks do not arrive either. Re-running init mode picks up the skills/agents/rules but **overwrites
+> `CLAUDE.md`**. For an existing project the honest path is a targeted copy:
+>
+> ```bash
+> SK="$(readlink -f ~/.claude/skills/init-project)"; G="$(dirname "$(dirname "$SK")")"
+> cp -r "$G/skills/ansible-engineer" .claude/skills/
+> cp "$G/agents/ansible-reviewer.md" .claude/agents/
+> cp "$G/rules/ansible.md"           .claude/rules/
+> # then hand-merge the new allow/deny entries and hooks from "$G/settings.json"
+> ```
+>
+> The pipeline skills and reviewer agents are exempt — they are user-level symlinks (Guide §1.1), so
+> `/ansible-implement` and `ansible-reviewer` are live everywhere the moment they exist upstream.
 
 ### Step 1: Resolve the guideline source
 
