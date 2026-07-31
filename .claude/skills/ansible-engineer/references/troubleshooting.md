@@ -3,6 +3,14 @@
 Triage in this order: **connection → privilege → module arguments → logic → idempotency**. Most
 "Ansible is broken" reports are SSH problems.
 
+> **Who types these.** Ad-hoc `ansible <pattern> -m <module>` is on the permission deny list — it is
+> the fleet-wide footgun, and prefix matching cannot tell a one-host `ping` from `-m shell` against
+> everything. So the diagnostic commands below are **for the operator to run**: hand them over with
+> the host filled in and ask for the output. `ansible-doc`, `ansible-config dump` and
+> `ansible-inventory --graph` are the read-only exceptions worth reaching for yourself — except
+> `ansible-inventory`, which executes dynamic-inventory plugins (a live `DescribeInstances`) and so
+> also prompts.
+
 ## 1. Connection
 
 Always start with the smallest possible test, then escalate verbosity:
@@ -109,8 +117,12 @@ Ansible logs nothing by default:
 ```ini
 [defaults]
 log_path = ./ansible.log
-stdout_callback = yaml
-callbacks_enabled = profile_tasks     ; per-task timings — finds the slow one
+; Core's own YAML formatting. Do NOT use `stdout_callback = yaml`: that resolves to
+; community.general.yaml, which is deprecated and already gone by community.general 12.
+stdout_callback = default
+callback_result_format = yaml
+; per-task timings — finds the slow one
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 > `log_path` output can contain sensitive data. Gitignore it; rely on `no_log: true` to keep secrets
 > out in the first place.

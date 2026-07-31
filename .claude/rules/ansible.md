@@ -54,9 +54,11 @@ their own rules.
   `named-checkconf %s`). The string **must** contain `%s`, and the command must *check* rather than
   apply — `sysctl -p %s` applies, so it is not a validator
 - Pin a `checksum:` on `get_url` (or vendor the file) — an unpinned download is a MITM window
-- `host_key_checking` stays **enabled**. In `ansible.cfg`, keep the comment on its own line:
-  `configparser` does not strip inline comments, so `host_key_checking = True ; keep on` parses as a
-  non-boolean string and evaluates **False** — silently disabling the very thing the line claims
+- `host_key_checking` stays **enabled**. In `ansible.cfg`, keep every comment on its **own line**.
+  Ansible builds its parser as `ConfigParser(inline_comment_prefixes=(';',))`, so a `;` comment *is*
+  stripped — but `#` is **not**: `host_key_checking = True # keep on` yields the literal string
+  `'True # keep on'`, and `boolean(value, strict=False)` turns anything unrecognised into **False**,
+  silently disabling the very thing the line claims. Verify with `ansible-config dump --only-changed`
 
 ## Targeting Safety — treat every inventory host as production
 - Never `hosts: all`, and never `ansible <pattern> -m <module>` ad-hoc against the fleet
@@ -67,14 +69,18 @@ their own rules.
 ## Multi-OS
 - RedHat family is the house default (Rocky 9 / Amazon Linux 2023): `dnf`, `firewalld`, SELinux
 - Branch on facts (`ansible_os_family`, `ansible_distribution_major_version`), never on hostnames.
-  Guard SELinux checks with `ansible_selinux.status | default('disabled')` — on a host without
-  SELinux, `ansible_selinux` is the boolean `False` and a bare `.status` raises
+  Guard SELinux checks with `ansible_selinux.status | default('disabled')`. On a host with no
+  SELinux python binding the fact is `{'status': 'Missing selinux Python library'}`, and older
+  cores set it to the boolean `False` — either way a bare comparison misreads or raises
 - Set SELinux context with `sefcontext` + `restorecon` — never disable SELinux to make a task pass
 
 ## Collections & Versions
 - Declare every collection in `requirements.yml` with a version constraint
-- Target **ansible-core 2.17+** — the floor `amazon.aws >=9` and `community.general >=10` declare via
-  `requires_ansible`. Keep the local, CI and `requirements.yml` floors identical
+- Target **ansible-core 2.17+**. This is a *house policy* floor, not a collection requirement: the
+  pinned ranges (`amazon.aws >=9,<10`, `community.general >=10,<11`, `ansible.posix >=2,<3`,
+  `community.docker >=4,<5`) all declare only `requires_ansible: >=2.15.0`. `amazon.aws` first
+  requires 2.17 at **10.0.0**, which the ceiling excludes. Keep the local, CI and `requirements.yml`
+  floors identical anyway — a laptop below CI is how a green pipeline ships a broken playbook
 - `include:` was **removed** in 2.16; a playbook using it does not parse. Use `include_tasks`
   (dynamic) or `import_tasks` (static). Prefer `loop:` over `with_*`
 

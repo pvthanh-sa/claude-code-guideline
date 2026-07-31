@@ -39,13 +39,15 @@
       "Bash(ansible-config view*)",
       "Bash(ansible-galaxy collection list*)",
       "Bash(ansible-galaxy role list*)",
-      "Bash(ansible-lint --profile*)",
-      "Bash(ansible-lint --nocolor*)",
+      "Bash(ansible-lint --profile production --nocolor .)",
+      "Bash(ansible-lint --profile production --nocolor ansible/)",
+      "Bash(ansible-lint --profile production .)",
+      "Bash(ansible-lint --profile production ansible/)",
+      "Bash(ansible-lint --nocolor -q *)",
       "Bash(ansible-lint --version*)",
-      "Bash(ansible-lint -q*)",
       "Bash(yamllint*)",
-      "Bash(molecule lint*)",
       "Bash(molecule syntax*)",
+      "Bash(molecule drivers*)",
       "Bash(molecule --version*)",
       "Bash(ansible-vault encrypt*)",
       "Bash(ansible-vault encrypt_string*)",
@@ -108,7 +110,7 @@
           },
           {
             "type": "command",
-            "command": "f=$(python3 -c 'import json,sys;print(json.load(sys.stdin).get(\"tool_input\",{}).get(\"file_path\",\"\"))' 2>/dev/null); case \"$f\" in *.yml|*.yaml) ;; *) exit 0;; esac; case \"$f\" in *vault*|*/.github/*|*/templates/*) exit 0;; esac; case \"$f\" in */ansible/*|*/roles/*|*/playbooks/*|*/group_vars/*|*/host_vars/*|*/molecule/*|*/site.yml) ;; *) exit 0;; esac; [ -f \"$f\" ] || exit 0; [ -f .ansible-lint ] || exit 0; rc=0; o1=\"\"; o2=\"\"; command -v yamllint >/dev/null 2>&1 && { o1=$(yamllint -f parsable \"$f\" 2>&1) || rc=1; }; command -v ansible-lint >/dev/null 2>&1 && { o2=$(ansible-lint --nocolor -q \"$f\" 2>&1) || rc=1; }; [ \"$rc\" -eq 0 ] && exit 0; { printf 'Ansible lint findings for %s (fix these, then re-save):\\n' \"$f\"; printf '%s\\n%s\\n' \"$o1\" \"$o2\" | sed '/^$/d' | head -30; } >&2; exit 2"
+            "command": "f=$(python3 -c 'import json,sys;print(json.load(sys.stdin).get(\"tool_input\",{}).get(\"file_path\",\"\"))' 2>/dev/null); case \"$f\" in *.yml|*.yaml) ;; *) exit 0;; esac; b=${f##*/}; case \"$b\" in vault|vault.yml|vault.yaml|vault_*|*-vault.yml|*-vault.yaml) exit 0;; esac; case \"$f\" in */.github/*|*/knowledge/templates/*|*/molecule/*) exit 0;; esac; case \"$f\" in */ansible/*|*/roles/*|*/playbooks/*|*/group_vars/*|*/host_vars/*|*/site.yml|*/site.yaml) ;; *) exit 0;; esac; [ -f \"$f\" ] || exit 0; [ -f .ansible-lint ] && [ -f .yamllint ] || exit 0; rc=0; o1=\"\"; o2=\"\"; command -v yamllint >/dev/null 2>&1 && o1=$(yamllint -f parsable \"$f\" 2>&1); command -v ansible-lint >/dev/null 2>&1 && { o2=$(ansible-lint --nocolor -q \"$f\" 2>&1) || rc=1; }; [ \"$rc\" -eq 0 ] && exit 0; { printf 'ansible-lint findings for %s (fix these, then re-save). yamllint output is advisory:\\n' \"$f\"; printf '%s\\n%s\\n' \"$o2\" \"$o1\" | sed '/^$/d' | head -30; } >&2; exit 2"
           }
         ]
       }

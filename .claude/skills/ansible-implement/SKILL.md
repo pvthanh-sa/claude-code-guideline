@@ -221,8 +221,18 @@ copy_tpl ansible.cfg      ansible/ansible.cfg
 copy_tpl requirements.yml ansible/requirements.yml
 copy_tpl dot-ansible-lint .ansible-lint
 copy_tpl dot-yamllint     .yamllint
+copy_tpl dot-yamllint     ansible/.yamllint     # see the note below — NOT a duplicate by accident
 copy_tpl scan.yml         .github/workflows/ansible-scan.yml
 ```
+
+> **Why `.yamllint` twice.** `ansible-lint` finds `.ansible-lint` by walking parent directories,
+> but its *embedded* yamllint reads only **cwd** (`_yamllint_config_locations()` — `.yamllint`,
+> `.yamllint.yaml`, `.yamllint.yml`, `$YAMLLINT_CONFIG_FILE`, `$XDG_CONFIG_HOME`; no parent walk).
+> Everything that lints runs from inside the Ansible dir (`verify.sh`, the CI gate, Phase 3), so a
+> root-only `.yamllint` is silently ignored there and yamllint's *built-in* defaults apply instead —
+> `line-length` 160 and `document-start` disabled rather than your 120/error. Same rule ID, two
+> rulesets, and the stricter one only ever runs in the PostToolUse hook. Keep both copies in sync,
+> or set `YAMLLINT_CONFIG_FILE` explicitly.
 
 `.ansible-lint` is not optional decoration: the PostToolUse lint hook stays silent until it exists,
 because without it yamllint falls back to defaults (`line-length: 80`, everything an error) and

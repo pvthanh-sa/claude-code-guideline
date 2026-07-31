@@ -275,17 +275,22 @@ else
     *tool_input*)   echo "ok  ansible hook reads tool_input.file_path from stdin JSON" ;;
     *)              echo "FAIL ansible hook never reads the edited path — it can never fire" ;;
   esac
-  mkdir -p "$T/p/ansible/roles/r/tasks"; : > "$T/p/.ansible-lint"
+  # The hook is opt-in on BOTH configs: .ansible-lint (the ruleset) and .yamllint (without which
+  # yamllint falls back to line-length 80 / everything-an-error and buries you in noise).
+  mkdir -p "$T/p/ansible/roles/r/tasks"; : > "$T/p/.ansible-lint"; : > "$T/p/.yamllint"
   printf -- '- ansible.builtin.command: /bin/true\n' > "$T/p/ansible/roles/r/tasks/main.yml"   # unnamed task + no changed_when
-  if command -v ansible-lint >/dev/null 2>&1 || command -v yamllint >/dev/null 2>&1; then
+  if command -v ansible-lint >/dev/null 2>&1; then
     ( cd "$T/p" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/p/ansible/roles/r/tasks/main.yml" | sh -c "$HA" >/dev/null 2>&1 )
     [ $? -eq 2 ] && echo "ok  ansible hook reports findings (exit 2 -> reaches Claude)" || echo "FAIL ansible hook stayed silent on a task with no name and no changed_when"
     ( cd "$T" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/p/ansible/roles/r/tasks/main.yml" | sh -c "$HA" >/dev/null 2>&1 )
-    [ $? -eq 0 ] && echo "ok  ansible hook is opt-in (silent without .ansible-lint in cwd)" || echo "FAIL ansible hook fired in a project with no .ansible-lint"
+    [ $? -eq 0 ] && echo "ok  ansible hook is opt-in (silent without .ansible-lint/.yamllint in cwd)" || echo "FAIL ansible hook fired in a project with no .ansible-lint"
+    rm -f "$T/p/.yamllint"
+    ( cd "$T/p" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$T/p/ansible/roles/r/tasks/main.yml" | sh -c "$HA" >/dev/null 2>&1 )
+    [ $? -eq 0 ] && echo "ok  ansible hook needs .yamllint too (else yamllint noise at 80 cols)" || echo "FAIL ansible hook fired with .ansible-lint but no .yamllint"
   else
-    echo "warn ansible hook NOT functionally tested — yamllint/ansible-lint not installed (§1.0). Silence here proves nothing."
+    echo "warn ansible hook NOT functionally tested — ansible-lint not installed (§1.0). Silence here proves nothing."
   fi
-  rm -f "$T/p/ansible/roles/r/tasks/main.yml" "$T/p/.ansible-lint"
+  rm -f "$T/p/ansible/roles/r/tasks/main.yml" "$T/p/.ansible-lint" "$T/p/.yamllint"
   rmdir "$T/p/ansible/roles/r/tasks" "$T/p/ansible/roles/r" "$T/p/ansible/roles" "$T/p/ansible" "$T/p"
 fi
 rm -f "$T/x.tf"; rmdir "$T"
@@ -1124,7 +1129,7 @@ cd ansible && ansible-playbook site.yml --limit <host> --diff   # ...twice; 2nd 
 | Applied fine, but events/records aren't flowing                       | Usually eventual consistency, not a bug: CloudTrail→EventBridge takes 20 s–3 min; a new DynamoDB-stream mapping takes ~1 min to activate (and `LATEST` **skips** writes made before activation — prefer `TRIM_HORIZON` with idempotent consumers). Functional tests must poll with a timeout, never fail fast. |
 | Long pause mid-run and the lab is burning money                       | Idle-floor services (aoss ≈$6/day, NAT, ALB, provisioned RDS) bill hourly while they exist. `terraform plan -destroy` → `apply tfplan-destroy`, resume later — state + code make the rebuild one apply (Step 3 §5).                                                                          |
 | Every `.yml` edit comes back with a wall of lint findings | The PostToolUse ansible hook is firing where it shouldn't. It only runs when `.ansible-lint` exists in the project root — if the noise is real findings, fix them; if it is line-length/truthy noise, `.yamllint` is missing or not being read (copy it from `knowledge/templates/ansible/dot-yamllint`). Note `ansible-lint` embeds yamllint and reports it as `yaml[*]` **errors** under the production profile: make a rule advisory via `warn_list` in `.ansible-lint`, **not** `level:` in `.yamllint`. |
-| `--syntax-check` fails with "couldn't resolve module/action 'amazon.aws.…'" | The collection isn't on the search path. Usually `collections_path` set in `ansible.cfg` (it **replaces** the default list rather than extending it, hiding `~/.ansible/collections`) — remove the key. Otherwise run `ansible-galaxy collection install -r requirements.yml`, and check `ansible --version` is ≥ 2.17: `amazon.aws >=9` / `community.general >=10` declare `requires_ansible: >=2.17`. |
+| `--syntax-check` fails with "couldn't resolve module/action 'amazon.aws.…'" | The collection isn't on the search path. Usually `collections_path` set in `ansible.cfg` (it **replaces** the default list rather than extending it, hiding `~/.ansible/collections`) — remove the key. Otherwise run `ansible-galaxy collection install -r requirements.yml`, and check `ansible --version` is ≥ 2.17 (our house floor). Note the pinned collections only declare `requires_ansible: >=2.15.0`, so a resolve failure here is more likely a missing install than a core-version mismatch — read what `ansible-galaxy collection list` actually shows. |
 | Ansible gates all report SKIPPED, or `verify.sh` exits 3 | The toolchain isn't installed — that is INCONCLUSIVE, never a pass. `.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run`, then run it for real. If the tools install but stay "command not found": pyenv needs `pyenv rehash`, pipx needs a new shell. |
 | `/infra-review` says "contains neither Terraform nor Ansible" | Wrong target. The preflight looks for `*.tf` and for `ansible.cfg` / `site.yml` / `roles/*/tasks/` / `playbooks/` / `group_vars/`. Point it at the repo root for a mixed repo, or at the env dir for Terraform only. |
 | `/infra-review --live` still prompts on some AWS reads                 | The shipped `.claude/settings.json` bundle auto-approves the common read verbs, but a read outside it (or a stale copied `settings.json`) will prompt. Quick fix: add `"Bash(aws *)"` to `.claude/settings.local.json` (personal, gitignored) — safe because `--live` runs under the read-only `.mcp.json` profile. Never use `--dangerously-skip-permissions` (drops the destroy/apply guard). If it prompts because `.mcp.json` has **no** AWS profile, configure the read-only MCP profile ([`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md)) first. See Step 4 "review the live stack". |

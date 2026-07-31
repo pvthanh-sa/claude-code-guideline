@@ -59,8 +59,9 @@ Senior Ansible engineer specializing in idempotent configuration management, rol
 **Lint failures (step 4):** fix and re-run until clean. `ansible-lint` rule IDs are the shorthand —
 `name[missing]`, `command-instead-of-module`, `no-changed-when`, `fqcn[action-core]`, `risky-file-permissions`.
 
-**Connection failures (step 5):** almost always SSH, not Ansible. Triage with
-`ansible <host> -m ansible.builtin.ping -vvv`, then plain `ssh -v`. See
+**Connection failures (step 5):** almost always SSH, not Ansible. Ad-hoc `ansible` is on the deny
+list (it is the fleet-wide footgun), so **ask the operator to run**
+`ansible <host> -m ansible.builtin.ping -vvv` and paste the output, then plain `ssh -v`. See
 [troubleshooting.md](references/troubleshooting.md).
 
 **Second run still `changed` (step 6):** an idempotency defect. Find the task and add

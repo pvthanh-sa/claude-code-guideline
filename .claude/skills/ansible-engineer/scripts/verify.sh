@@ -150,5 +150,12 @@ if [ "$SKIP_BLOCKING" -gt 0 ]; then
   printf '           %s/bootstrap-ansible.sh --dry-run\n\n' "$SCRIPT_DIR"
   exit 3
 fi
+if [ -z "$LIMIT" ]; then
+  # Gate 4 is BLOCKING in the ladder. Skipping it for lack of --limit is not a pass -- the
+  # whole point of this script is that a gate which never ran is never reported as green.
+  printf '   Result: PARTIAL — gates 1-3 passed; gate 4 (--check --diff) never ran.\n'
+  printf '           Re-run with --limit <host> for the diff that G3b actually requires.\n\n'
+  exit 3
+fi
 printf '   Result: OK — all blocking gates ran and passed.\n\n'
 exit 0

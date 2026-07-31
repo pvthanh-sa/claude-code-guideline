@@ -35,9 +35,11 @@ for arg in "$@"; do
   esac
 done
 
-# ansible-core floor is 2.17, not 2.16: amazon.aws >= 9 and community.general >= 10 both
-# declare `requires_ansible: >=2.17`. Pinning 2.16 locally while CI resolves 2.18 is how
-# you get a green pipeline and a red laptop.
+# ansible-core floor is 2.17 by HOUSE POLICY, not because a pinned collection demands it:
+# amazon.aws 9.x, community.general 10.x, ansible.posix 2.x and community.docker 4.x all
+# declare only `requires_ansible: >=2.15.0` (amazon.aws first requires 2.17 at 10.0.0, which
+# requirements.yml's ceiling excludes). Keep this floor identical to CI and requirements.yml
+# regardless -- a laptop below CI is how a green pipeline ships a broken playbook.
 PY_PKGS=(
   "ansible-core>=2.17"
   "ansible-lint>=25.0"
@@ -51,7 +53,7 @@ PY_PKGS=(
 
 COLLECTIONS=(
   "amazon.aws:>=9.0.0"
-  "community.general:>=10.0.0"
+  "community.general:>=10.0.0,<11.0.0"
   "ansible.posix:>=2.0.0"
   "community.docker:>=4.0.0"
 )

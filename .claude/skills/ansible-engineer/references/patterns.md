@@ -1,7 +1,7 @@
 # Ansible Patterns
 
-Canonical snippets. All modern syntax (FQCN, `loop`, `include_tasks`), ansible-core 2.17+ — the
-floor the pinned collections require (see `knowledge/templates/ansible/requirements.yml`).
+Canonical snippets. All modern syntax (FQCN, `loop`, `include_tasks`), written against the house
+floor of ansible-core 2.17+ (see `knowledge/templates/ansible/requirements.yml`).
 
 ## Role skeleton
 
@@ -365,7 +365,7 @@ Guard the inputs so a missing output fails loudly rather than templating an empt
 
 ```yaml
 - name: Roll the web tier
-  hosts: webservers
+  hosts: webservers_prod        # a LEAF group, never the `webservers` parent
   serial: 1                     # one host at a time
   max_fail_percentage: 0        # stop the whole run on the first failure
 ```

@@ -40,7 +40,12 @@ const preflight = await agent(
   `In "${target}", run BOTH of these and report the counts:\n` +
   `  A) find "${target}" -name '*.tf' -not -path '*/.terraform/*' | head -5\n` +
   `  B) find "${target}" \\( -name ansible.cfg -o -name site.yml -o -path '*/roles/*/tasks/*' ` +
-  `-o -path '*/playbooks/*' -o -path '*/group_vars/*' \\) -not -path '*/.git/*' | head -5\n` +
+  `-o -path '*/playbooks/*' -o -path '*/group_vars/*' \\) ` +
+  `-not -path '*/.git/*' -not -path '*/knowledge/templates/*' -not -path '*/.claude/*' | head -5\n` +
+  `Exclude template and tooling copies (B's -not clauses): a scaffolding template is not a stack, ` +
+  `and counting one would make every repo that merely SHIPS Ansible templates look like an Ansible ` +
+  `project. If B finds nothing but a real playbook exists under an unusual name, say so rather than ` +
+  `guessing — the operator can re-target.\n` +
   `Return tfFiles (count from A, cap 5), ansibleFiles (count from B, cap 5), and resolvedPath ` +
   `(realpath of the dir; '' if the dir does not exist). Nothing else.`,
   {
@@ -354,18 +359,35 @@ phase('Synthesize')
 // If a reviewer never ran, the review can't be trusted to clear an apply. Don't emit "go".
 if (incomplete.size) {
   const which = [...incomplete].join(', ')
-  log(`INCOMPLETE: reviewer(s) did not run: ${which} — forcing go-with-fixes and flagging in the report.`)
+  // Count what the reviewers that DID run actually found. Returning zeroed counts next to a
+  // populated topFindings list contradicts itself, and downgrading a real Critical to
+  // go-with-fixes is a worse failure than the missing reviewer: an incomplete review may not
+  // clear an apply, but it must not soften a finding it did produce either.
+  const partial = { critical: 0, high: 0, medium: 0, low: 0 }
+  for (const f of findings) {
+    if (f.acceptedRisk) continue
+    const k = (f.severity || '').toLowerCase()
+    if (k in partial) partial[k]++
+  }
+  log(`INCOMPLETE: reviewer(s) did not run: ${which} — counted ${partial.critical} critical / ${partial.high} high from the reviewers that did.`)
   return {
-    recommendation: 'go-with-fixes',
+    recommendation: partial.critical > 0 ? 'no-go' : 'go-with-fixes',
     summary: `INCOMPLETE REVIEW — the following reviewer(s) did not run: ${which}. ` +
       `Likely cause: the agent definition(s) are not resolvable — install them user-level so /infra-review ` +
       `works in any project (symlink ~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,ansible-reviewer,incident-responder}.md ` +
       `per pipeline-usage-guide §1.1), or run /init-project to copy them into this project's .claude/agents/; ` +
       `failing that the agent hit a terminal error. The findings below cover only the reviewers that DID run, so absence of ` +
-      `findings here does NOT mean clean. Re-run /infra-review after restoring the agents before trusting a go.`,
-    counts: { critical: 0, high: 0, medium: 0, low: 0 },
+      `findings here does NOT mean clean. Re-run /infra-review after restoring the agents before trusting a go. ` +
+      `Counts below are PARTIAL — they cover the reviewers that ran: ` +
+      `${partial.critical} critical, ${partial.high} high, ${partial.medium} medium, ${partial.low} low.`,
+    counts: partial,
     topFindings: findings.slice(0, 50),
-    mustFixBeforeApply: [`Restore missing reviewer agent(s): ${which}, then re-run /infra-review`],
+    mustFixBeforeApply: [
+      `Restore missing reviewer agent(s): ${which}, then re-run /infra-review`,
+      ...findings
+        .filter((f) => !f.acceptedRisk && ['critical', 'high'].includes((f.severity || '').toLowerCase()))
+        .map((f) => `[${f.severity}] ${f.title} — ${f.location}`),
+    ],
   }
 }
 // Baseline-aware labeling: read the prior report (if one was passed) so synthesis can mark each

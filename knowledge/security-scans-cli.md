@@ -48,7 +48,8 @@ system interpreter's site-packages:
 .claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh             # venv/pyenv -> pipx -> refuse
 ```
 
-It installs `ansible-core>=2.17` (the floor `amazon.aws>=9` and `community.general>=10` require),
+It installs `ansible-core>=2.17` (a house-policy floor — the pinned collections themselves only
+require `>=2.15.0`),
 `ansible-lint`, `yamllint`, `molecule`, and the four pinned collections.
 
 > **Docker fallback** (only if you can't install a binary): `ghcr.io/aquasecurity/trivy`,

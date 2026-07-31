@@ -58,6 +58,13 @@ rules:
 
   # Quoting style is enforced by review, not by yamllint -- too noisy otherwise.
   quoted-strings: disable
+  # Both octal switches MUST be true, and braces.max-spaces-inside MUST be 1. ansible-lint
+  # validates a custom .yamllint against six required settings (_validate_yamllint_compatibility
+  # in ansiblelint/yaml_utils.py); a mismatch prints "Found incompatible custom yamllint
+  # configuration ... Fix mode will not be available." on every run and makes --fix exit 3.
   octal-values:
     forbid-implicit-octal: true   # catches `mode: 0644` (should be '0644')
-    forbid-explicit-octal: false
+    forbid-explicit-octal: true   # required by ansible-lint's embedded yamllint
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1          # required by ansible-lint (`{{ x }}`, not `{{x}}`)

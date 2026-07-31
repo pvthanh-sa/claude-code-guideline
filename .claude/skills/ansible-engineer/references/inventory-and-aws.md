@@ -177,11 +177,21 @@ bootstrap), add it in memory rather than writing a file:
 
 ## A matching ansible.cfg
 
-> **Never put a comment on the same line as a value.** `ansible.cfg` is parsed by Python
-> `configparser`, which does not strip inline comments by default. `host_key_checking = True ; keep on`
-> becomes the literal string `True ; keep on` — not a recognized boolean, so it evaluates to
-> **False**, silently disabling host key checking on the very line that claims to enable it. Put every
-> comment on its own line and verify with `ansible-config dump --only-changed`.
+> **Never put a comment on the same line as a value — and know which character bites.** Ansible
+> builds its parser as `configparser.ConfigParser(inline_comment_prefixes=(';',))`
+> (`ansible/config/manager.py`), so a **`;`** comment *is* stripped and
+> `host_key_checking = True ; keep on` is actually safe. **`#` is not stripped**: the value becomes
+> the literal string `'True # keep on'`, and `manager.py` then runs `boolean(value, strict=False)`,
+> which returns **False** for anything it does not recognise — silently disabling host key checking on
+> the very line that claims to enable it.
+>
+> ```ini
+> host_key_checking = True ; keep on   # -> True   (safe: ';' is an inline comment prefix)
+> host_key_checking = True # keep on   # -> False  (SILENT FAILURE: '#' is kept in the value)
+> ```
+>
+> Put every comment on its own line regardless, and verify with `ansible-config dump --only-changed`.
+> Note this cuts both ways for review: a grep for `= False` will never catch the `#` form.
 
 ```ini
 [defaults]

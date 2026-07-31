@@ -8,9 +8,10 @@
 # between two runs of the same playbook -- the opposite of what configuration
 # management is for.
 #
-# CONTROL-NODE FLOOR: amazon.aws >=9 and community.general >=10 both declare
-# `requires_ansible: >=2.17`. Keep ansible-core >= 2.17 locally AND in CI, or CI resolves a
-# newer core, passes, and the same playbook fails on a laptop pinned to 2.16.
+# CONTROL-NODE FLOOR: ansible-core >= 2.17 is a HOUSE choice. Every range pinned below declares
+# only `requires_ansible: >=2.15.0` -- amazon.aws first requires 2.17 at 10.0.0, which the <10
+# ceiling excludes. Keep the floor identical locally AND in CI anyway: if CI resolves a newer
+# core it passes, and the same playbook then fails on a laptop pinned lower.
 ---
 collections:
   # AWS modules + the aws_ec2 dynamic inventory plugin + the aws_ssm connection plugin.
