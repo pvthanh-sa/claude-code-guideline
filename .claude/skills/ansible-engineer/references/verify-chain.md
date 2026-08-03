@@ -5,16 +5,22 @@ reproducible**, so run them and report exactly which ones ran.
 
 ## Toolchain status
 
-Assume nothing is installed until `command -v` says otherwise. The Ansible toolchain is **not** part
-of the pipeline's baseline prerequisites — a Terraform-only project never needs it, so it is normal
-for `ansible`, `ansible-lint`, `yamllint` and `molecule` to all be absent.
+The Ansible toolchain is **not** part of the pipeline's baseline prerequisites — a Terraform-only
+project never needs it, so it is normal for `ansible`, `ansible-lint`, `yamllint` and `molecule` to
+all be absent when Stage 3b first runs.
 
-**Therefore: gate every invocation.** Never let a missing tool read as a passing gate.
+**House rule: a missing tool is installed, not skipped.** A skipped gate produces no evidence, and
+"inconclusive" is indistinguishable from "fine" three commits later. `verify.sh` therefore calls
+`bootstrap-ansible.sh --ensure` and only then runs the ladder; if the install is impossible it
+**FAILS** with the reason.
 
 ```bash
-command -v ansible-lint >/dev/null 2>&1 || {
-  echo "SKIPPED: ansible-lint not installed — run scripts/bootstrap-ansible.sh"
-}
+# Presence must be tested by RUNNING the tool. Under pyenv the shim is on PATH for every
+# interpreter, so `command -v ansible-lint` answers yes even when the package lives in another
+# pyenv version -- and the gate then dies with "pyenv: ansible-lint: command not found",
+# which reads as a broken playbook instead of a broken toolchain.
+have() { command -v "$1" >/dev/null 2>&1 && "$1" --version >/dev/null 2>&1; }
+have ansible-lint || "$SKILL_DIR/scripts/bootstrap-ansible.sh" --ensure
 ```
 
 ### Bootstrap
@@ -58,14 +64,34 @@ production profile those are *errors*. The `level: warning` you set in `.yamllin
 over. To make a rule genuinely advisory, add it to `warn_list` in `.ansible-lint`
 (e.g. `- yaml[line-length]`).
 
+> **A skipped `command` looks like a successful one.** In check mode the registered result is
+> `{"rc": 0, "skipped": true, "changed": false}` — `rc` is **0**, not absent. So the natural guard
+> `probe.rc | default(1) == 0` prints OK for a command that never ran. Test `is skipped` first:
+> ```yaml
+> verdict: "{{ 'INCONCLUSIVE (check mode)' if probe is skipped
+>              else ('OK' if probe.rc == 0 else 'FAIL') }}"
+> ```
+> This bites hardest inside a `rescue:` that verifies a rollback — the one place a false green costs
+> the most.
+
 > **Check mode cannot prove idempotency.** In `--check`, `command`/`shell` tasks are *skipped*, not
 > executed — precisely the task class that breaks idempotency is invisible. Meanwhile tasks gated on
 > data a skipped task would have produced report false `changed`. So gate 5 must be a **real** run:
 > apply once, then run again and require `changed=0`.
 
-`scripts/verify.sh` runs gates 1–4 (gate 4 only when you pass `--limit`), skips any missing tool, and
-**exits 3 (INCONCLUSIVE)** rather than 0 when a blocking gate never ran. Gates 5–6 need a live target
-or a container, so the script points at them instead of faking a result.
+`scripts/verify.sh` runs gates 1–4. It installs any missing tool first, so no gate is skipped for a
+toolchain reason. Its contract:
+
+| Exit | Meaning |
+|------|---------|
+| `0` | every gate ran and passed |
+| `1` | a gate FAILED, **or** a required tool could not be installed |
+| `2` | bad usage — including "`--limit` missing and `--no-diff` not given" |
+| `3` | PARTIAL: gates 1–3 passed, gate 4 waived with `--no-diff` |
+
+`--limit <host>` is **required** unless you pass `--no-diff`. Gate 4 is blocking and needs a real
+host, which a script cannot invent — so waiving it has to be a deliberate flag, never a default.
+Gates 5–6 need a live target or a container; the script points at them instead of faking a result.
 
 > **`ansible.cfg` is found relative to your current directory, not the playbook's.** Running
 > `ansible-playbook ansible/site.yml` from the repo root silently ignores `ansible/ansible.cfg` —
@@ -73,6 +99,54 @@ or a container, so the script points at them instead of faking a result.
 > directory first.** `ANSIBLE_CONFIG=ansible/ansible.cfg` loads the file but does *not* fix the
 > relative paths inside it, so `inventory = inventory.ini` still resolves against the repo root.
 > `verify.sh` does the `cd` for you.
+
+## `validate:` is a gate that a second OS family can silently remove
+
+`validate:` runs its binary against Ansible's **staged** file, under the login user's remote tmp.
+AppArmor and SELinux profiles typically permit the service to read only its own config directory, so
+on a confined binary the kernel refuses the open before a single line is parsed:
+
+```
+fatal: [ubuntu-host]: FAILED! => msg: failed to validate
+  stderr: Could not open /home/svc/.ansible/tmp/ansible-tmp-*/.source.conf : Permission denied
+$ journalctl -k | grep apparmor
+apparmor="DENIED" operation="open" profile="/usr/sbin/chronyd" … requested_mask="r" fsuid=0 ouid=0
+```
+
+Root-owned, read as root, denied — `fsuid=0 ouid=0` is the tell, and `chmod` will not help. The
+module reports the symptom of the wrong subsystem, which is what makes it expensive.
+
+`sshd -t` and `visudo -c` are unconfined on both families, so the two validators that matter most are
+safe. `chronyd` and `named` are not. The fix that keeps a real gate is a **post-write** validator
+reading the file at its final path, inside the same `block`/`rescue`, ordered before
+`flush_handlers` — see `patterns.md` for the task, including why it needs `check_mode: false`.
+Verified on Ubuntu 24.04, 2026-08-01.
+
+## Verifying effective state — three traps
+
+`sshd -T`, `firewall-cmd --list-all`, `getenforce` are the right sources: they are the daemon's own
+resolved view, not a grep of the file you just wrote. But parsing them has sharp edges.
+
+**1. `sshd -T` normalises multi-value keywords to one line per value.** A drop-in containing
+`AllowGroups fleetmanaged fleetauto` is reported as *two* lines. Taking the first match sees one
+group and fails the assert on a correct host — a gate that cries wolf, which is how gates stop being
+trusted. Collect every matching line, then flatten:
+
+```yaml
+_allowgroups: >-
+  {{ sshd_t.stdout_lines | select('match', '^allowgroups ')
+     | map('regex_replace', '^allowgroups\s*', '')
+     | map('split') | flatten | list }}
+```
+
+**2. `| first | default(...)` hides an empty result.** When nothing matched, the default is parsed as
+if it were real output and the assert reports a plausible-looking wrong value instead of "not set".
+Assert `| length > 0` separately so "absent" and "wrong" are distinguishable.
+
+**3. Drop-in order is the whole point — verify it, don't assume it.** On Rocky 9 a stock
+`50-cloud-init.conf` ships `PasswordAuthentication yes`. A baseline file named `00-…` wins because
+sshd applies first-value-wins in lexical order. Grepping the config directory finds *both* lines and
+proves nothing; only `sshd -T` says which one is in force.
 
 ## The rules that matter in `ansible-lint`
 
@@ -91,6 +165,12 @@ Learn the IDs — they are the shorthand you'll see in output and CI:
 | `no-log-password` | Password-ish variable without `no_log` | Add `no_log: true` |
 | `package-latest` | `state: latest` | Pin, or accept deliberately |
 | `var-naming` | Not `snake_case`, or unprefixed in a role | Rename with the role prefix |
+
+> **Read the exit code, not the summary line.** With anything in `warn_list`, ansible-lint still
+> prints `WARNING  Listing N violation(s) that are fatal` and ends with
+> `Profile 'production' was required, but 'moderate' profile passed. Rating: 2/5 star` — while
+> **exiting 0**. Both lines read like failure and neither is. The gate is `$?`; the star rating is
+> capped by the mere presence of a warn-listed rule and says nothing about whether you passed.
 
 Configure once in `.ansible-lint` (template: `knowledge/templates/ansible/dot-ansible-lint` in the
 guideline repo; `/ansible-implement` copies it into the project) rather than sprinkling `# noqa` in

@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Run the Ansible verification ladder, skipping any tool that is not installed.
+# Run the Ansible verification ladder. Every gate RUNS -- none is skipped for a missing tool.
 #
-# A skipped gate is reported as SKIPPED and lowers the coverage summary — it is never
-# counted as a pass. ansible-lint (production profile) is the blocking gate.
+# HOUSE RULE: a gate never reports SKIPPED because its tool is absent. If a tool is missing,
+# this script installs it (bootstrap-ansible.sh --ensure) and then runs the gate. If the
+# install is impossible, that is a FAIL with the reason -- never a silent pass, and never an
+# "inconclusive" shrug that a && chain would read as success.
 #
 # Usage:
-#   verify.sh [target-dir] [--limit <host>] [--playbook <path>]
+#   verify.sh [target-dir] --limit <host> [--playbook <path>] [--vault-password-file <path>]
+#   verify.sh [target-dir] --no-diff     [--playbook <path>] [--vault-password-file <path>]
 #
-#   verify.sh ansible/
-#   verify.sh ansible/ --limit web-stg-1          # also runs --check --diff
-#   verify.sh . --playbook playbooks/site.yml
+#   verify.sh ansible/ --limit web-stg-1     # the full ladder, gates 1-4
+#   verify.sh ansible/ --no-diff             # gates 1-3 only, EXPLICITLY (exits 3, not 0)
+#   verify.sh ansible/ --limit web-stg-1 --no-install   # air-gapped: missing tool = FAIL
 #
-# Exit codes: 0 = all blocking gates ran and passed · 1 = a blocking gate failed
-#             2 = bad usage · 3 = INCONCLUSIVE (a blocking gate never ran; tool missing)
+# --limit is REQUIRED unless you pass --no-diff. Gate 4 is blocking, so the choice to run
+# without a host has to be deliberate; it is not something the script decides for you.
+#
+# Exit codes: 0 = every gate ran and passed
+#             1 = a gate FAILED, or a required tool could not be installed
+#             2 = bad usage
+#             3 = PARTIAL: gates 1-3 passed but gate 4 was waived with --no-diff
 
 set -uo pipefail
 
@@ -20,6 +28,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="ansible"
 LIMIT=""
 PLAYBOOK=""
+NO_DIFF=0
+AUTO_INSTALL=1
+VAULT_FILE=""
 
 # Self-documenting --help: replay the header comment block, whatever it currently says.
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
@@ -31,14 +42,38 @@ while [ $# -gt 0 ]; do
                 LIMIT="$2"; shift 2 ;;
     --playbook) [ $# -ge 2 ] || { echo "ERROR: --playbook needs a path" >&2; exit 2; }
                 PLAYBOOK="$2"; shift 2 ;;
+    --vault-password-file)
+                [ $# -ge 2 ] || { echo "ERROR: --vault-password-file needs a path" >&2; exit 2; }
+                VAULT_FILE="$2"; shift 2 ;;
+    --no-diff)    NO_DIFF=1; shift ;;
+    --no-install) AUTO_INSTALL=0; shift ;;
     -h|--help)  usage; exit 0 ;;
     -*)         echo "Unknown flag: $1" >&2; exit 2 ;;
     *)          TARGET="$1"; shift ;;
   esac
 done
 
+if [ -z "$LIMIT" ] && [ "$NO_DIFF" -eq 0 ]; then
+  echo "ERROR: gate 4 (--check --diff) is blocking, so it needs a decision:" >&2
+  echo "  verify.sh $TARGET --limit <host>   # run it against ONE host (what G3b requires)" >&2
+  echo "  verify.sh $TARGET --no-diff        # waive it deliberately (exits 3, never 0)" >&2
+  exit 2
+fi
 [ -d "$TARGET" ] || { echo "ERROR: target dir '$TARGET' not found" >&2; exit 2; }
 TARGET_LABEL="$TARGET"
+
+# Same for the vault password file: it is given relative to the caller's cwd, and we cd below.
+# A relative path that survives the cd silently points at a DIFFERENT file (or nothing), and the
+# gate then fails with "Attempting to decrypt but no vault secrets found" — which reads as a
+# broken playbook rather than a mis-resolved path.
+VAULT_ARG=""
+if [ -n "$VAULT_FILE" ]; then
+  [ -f "$VAULT_FILE" ] || { echo "ERROR: vault password file '$VAULT_FILE' not found" >&2; exit 2; }
+  VAULT_FILE="$(cd "$(dirname "$VAULT_FILE")" && pwd)/$(basename "$VAULT_FILE")"
+  VAULT_ARG="--vault-password-file $VAULT_FILE"
+elif [ -n "${ANSIBLE_VAULT_PASSWORD_FILE:-}" ]; then
+  echo "   using ANSIBLE_VAULT_PASSWORD_FILE from the environment"
+fi
 
 # --playbook is given relative to the caller's cwd; resolve it BEFORE we cd away.
 if [ -n "$PLAYBOOK" ]; then
@@ -63,7 +98,56 @@ if [ -z "$PLAYBOOK" ]; then
   done
 fi
 
-PASS=0; FAIL=0; SKIP=0; WARN=0; SKIP_BLOCKING=0
+# ---------------------------------------------------- toolchain: install, never skip
+# The gates below assume their tools exist, because this block guarantees it. A missing tool
+# is a setup problem with a known fix, not a reason to downgrade coverage and move on.
+# A tool counts as present only if it RUNS. `command -v` alone is a false positive under
+# pyenv: the shim is on PATH for every interpreter, so it answers yes even when the package
+# lives in a different pyenv version -- and the gate then fails with
+# "pyenv: ansible-lint: command not found", which reads as a broken PLAYBOOK, not a broken
+# toolchain. That misdiagnosis is worse than an honest skip.
+have() { command -v "$1" >/dev/null 2>&1 && "$1" --version >/dev/null 2>&1; }
+
+TOOL_FAIL=""
+MISSING_TOOLS=""
+for t in yamllint ansible-playbook ansible-lint; do
+  have "$t" || MISSING_TOOLS="$MISSING_TOOLS $t"
+done
+if [ -n "$MISSING_TOOLS" ]; then
+  printf '\n== Toolchain: missing%s\n' "$MISSING_TOOLS"
+  if [ "$AUTO_INSTALL" -eq 1 ]; then
+    printf '   installing (house rule: a gate installs its tool rather than skipping)\n'
+    if "$SCRIPT_DIR/bootstrap-ansible.sh" --ensure; then
+      :
+    else
+      TOOL_FAIL="bootstrap-ansible.sh --ensure failed (exit $?)"
+    fi
+  else
+    TOOL_FAIL="--no-install was passed, so the missing tool(s) were not installed"
+  fi
+  STILL=""
+  for t in yamllint ansible-playbook ansible-lint; do
+    have "$t" || STILL="$STILL $t"
+  done
+  if [ -n "$STILL" ]; then
+    [ -n "$TOOL_FAIL" ] || TOOL_FAIL="still missing after install:$STILL"
+    printf '\n\033[31m== BLOCKED — the verification gates cannot run\033[0m\n'
+    printf '   missing:%s\n' "$STILL"
+    printf '   cause:  %s\n' "$TOOL_FAIL"
+    printf '   fix:    %s/bootstrap-ansible.sh --dry-run   (read the plan, then run it)\n' "$SCRIPT_DIR"
+    for t in $STILL; do
+      command -v "$t" >/dev/null 2>&1 && {
+        printf '   NOTE:   %s IS on PATH but does not run — a pyenv shim pointing at another\n' "$t"
+        printf '           interpreter. In THIS directory: pyenv local <the version it was installed into>\n'
+        break; }
+    done
+    printf '\n'
+    printf '   This is a FAIL, not a skip: an unrun gate must never read as a pass.\n\n'
+    exit 1
+  fi
+fi
+
+PASS=0; FAIL=0; SKIP=0; WARN=0
 result() { # result <PASS|FAIL|WARN|SKIP> <gate> [detail]
   case "$1" in
     PASS) PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m    %s %s\n' "$2" "${3:-}" ;;
@@ -82,55 +166,47 @@ fi
 
 # ---------------------------------------------------------------- 1. yamllint (advisory)
 printf '\n-- 1/4 yamllint (advisory)\n'
-if command -v yamllint >/dev/null 2>&1; then
-  if yamllint -f parsable .; then result PASS yamllint
-  else result WARN yamllint '(advisory — style only, does not block)'
-  fi
-else
-  result SKIP yamllint 'not installed — bootstrap-ansible.sh'
+if yamllint -f parsable .; then result PASS yamllint
+else result WARN yamllint '(advisory — style only, does not block)'
 fi
 
 # ------------------------------------------------------- 2. syntax-check (BLOCKING)
 printf '\n-- 2/4 ansible-playbook --syntax-check (BLOCKING)\n'
-if command -v ansible-playbook >/dev/null 2>&1 && [ -n "$PLAYBOOK" ]; then
-  # shellcheck disable=SC2086  # INV_ARG is intentionally word-split
-  if ansible-playbook $INV_ARG "$PLAYBOOK" --syntax-check; then result PASS syntax-check
-  else result FAIL syntax-check '(blocking)'; fi
-elif [ -z "$PLAYBOOK" ]; then
-  result SKIP syntax-check 'no playbook found'; SKIP_BLOCKING=1
+if [ -z "$PLAYBOOK" ]; then
+  # Not a skip: there is nothing to verify, which is a real defect in the target, not a
+  # gap in coverage. Name the paths that were tried so the fix is obvious.
+  result FAIL syntax-check 'no playbook found (looked for site.yml, site.yaml, playbooks/site.yml) — pass --playbook <path>'
 else
-  result SKIP syntax-check 'ansible-playbook not installed'; SKIP_BLOCKING=1
+  # shellcheck disable=SC2086  # INV_ARG is intentionally word-split
+  # shellcheck disable=SC2086  # VAULT_ARG is intentionally word-split
+  if ansible-playbook $INV_ARG $VAULT_ARG "$PLAYBOOK" --syntax-check; then result PASS syntax-check
+  else result FAIL syntax-check '(blocking)'; fi
 fi
 
 # ------------------------------------------------- 3. ansible-lint (BLOCKING gate)
 printf '\n-- 3/4 ansible-lint --profile production (BLOCKING)\n'
-if command -v ansible-lint >/dev/null 2>&1; then
-  if ansible-lint --profile production --nocolor .; then result PASS ansible-lint
-  else result FAIL ansible-lint '(blocking)'; fi
-else
-  result SKIP ansible-lint 'not installed — this IS the blocking gate, coverage is reduced'
-  SKIP_BLOCKING=1
-fi
+if ansible-lint --profile production --nocolor .; then result PASS ansible-lint
+else result FAIL ansible-lint '(blocking)'; fi
 
 # ----------------------------------------------------- 4. dry run (only with --limit)
 printf '\n-- 4/4 --check --diff\n'
-if [ -z "$LIMIT" ]; then
-  result SKIP 'check --diff' 'pass --limit <host> to enable (never runs against all hosts)'
-elif command -v ansible-playbook >/dev/null 2>&1 && [ -n "$PLAYBOOK" ]; then
+if [ "$NO_DIFF" -eq 1 ]; then
+  # Waived on purpose by the caller. Recorded as a WAIVED gate and forced to exit 3 below --
+  # this is the one gate a script cannot run for you, because it needs a real host.
+  result SKIP 'check --diff' 'WAIVED by --no-diff (needs a host; run with --limit <host> to satisfy G3b)'
+else
   # shellcheck disable=SC2086
-  if ansible-playbook $INV_ARG "$PLAYBOOK" --limit "$LIMIT" --check --diff; then
+  if ansible-playbook $INV_ARG $VAULT_ARG "$PLAYBOOK" --limit "$LIMIT" --check --diff; then
     result PASS 'check --diff' "(limit: $LIMIT)"
   else
     result FAIL 'check --diff' "(limit: $LIMIT)"
   fi
-else
-  result SKIP 'check --diff' 'ansible-playbook or playbook missing'
 fi
 
 # Molecule and the idempotency re-run are NOT gates here -- they need a live target or a
 # container and must be run deliberately. Point at them instead of faking a result.
 printf '\n-- next (not run by this script)\n'
-if command -v molecule >/dev/null 2>&1 && [ -n "$(find . -type d -name molecule -print -quit)" ]; then
+if have molecule && [ -n "$(find . -type d -name molecule -print -quit)" ]; then
   printf '   molecule scenario found: run "molecule test" inside the role dir\n'
 fi
 [ -n "$LIMIT" ] && printf '   idempotency proof: run the playbook FOR REAL twice against %s;\n                      the second run must report changed=0 (check mode cannot prove this)\n' "$LIMIT"
@@ -138,24 +214,17 @@ fi
 # ------------------------------------------------------------------------ summary
 printf '\n== Summary:  \033[32m%d passed\033[0m · \033[31m%d failed\033[0m · \033[33m%d warned\033[0m · \033[33m%d skipped\033[0m\n' \
   "$PASS" "$FAIL" "$WARN" "$SKIP"
-[ "$SKIP" -gt 0 ] && printf '   NOTE: skipped gates are NOT passes — coverage is lower than it looks.\n'
+[ "$SKIP" -gt 0 ] && printf '   NOTE: a WAIVED gate is not a pass — coverage is lower than it looks.\n'
 
 if [ "$FAIL" -gt 0 ]; then
   printf '   Result: BLOCKED — fix the failing gate(s) and re-run.\n\n'
   exit 1
 fi
-if [ "$SKIP_BLOCKING" -gt 0 ]; then
-  # A zero-coverage run must NOT exit 0 -- in CI or a && chain that would read as success.
-  printf '   Result: INCONCLUSIVE — a BLOCKING gate never ran. Install the toolchain:\n'
-  printf '           %s/bootstrap-ansible.sh --dry-run\n\n' "$SCRIPT_DIR"
+if [ "$NO_DIFF" -eq 1 ]; then
+  printf '   Result: PARTIAL — gates 1-3 ran and passed; gate 4 waived with --no-diff.\n'
+  printf '           G3b is NOT satisfied without a reviewed --check --diff. Re-run with\n'
+  printf '           --limit <host> once a host is reachable.\n\n'
   exit 3
 fi
-if [ -z "$LIMIT" ]; then
-  # Gate 4 is BLOCKING in the ladder. Skipping it for lack of --limit is not a pass -- the
-  # whole point of this script is that a gate which never ran is never reported as green.
-  printf '   Result: PARTIAL — gates 1-3 passed; gate 4 (--check --diff) never ran.\n'
-  printf '           Re-run with --limit <host> for the diff that G3b actually requires.\n\n'
-  exit 3
-fi
-printf '   Result: OK — all blocking gates ran and passed.\n\n'
+printf '   Result: OK — every gate ran and passed.\n\n'
 exit 0

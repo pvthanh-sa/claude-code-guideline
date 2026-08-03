@@ -31,6 +31,13 @@ webservers_stg
 webservers_prod
 ```
 
+> **`IdentitiesOnly=yes` or your fleet run dies on a workstation.** Naming
+> `ansible_ssh_private_key_file` does **not** stop SSH from first offering every identity in
+> `ssh-agent` plus the default `~/.ssh/id_*`. `sshd`'s `MaxAuthTries` is 6, so an engineer with a
+> normal key collection gets `Received disconnect: Too many authentication failures` against a host
+> whose key they are holding. Put it in `ssh_args` (the shipped `ansible.cfg` does) — the failure
+> looks like a broken host or a wrong key, and it is neither.
+
 Rules:
 - `prod` and `stg` are **separate groups**. A run targets one of them, never their parent.
 - Keep connection variables (`ansible_user`, `ansible_port`, `ansible_python_interpreter`) in
@@ -190,7 +197,15 @@ bootstrap), add it in memory rather than writing a file:
 > host_key_checking = True # keep on   # -> False  (SILENT FAILURE: '#' is kept in the value)
 > ```
 >
-> Put every comment on its own line regardless, and verify with `ansible-config dump --only-changed`.
+> Put every comment on its own line regardless, and verify with **two** dumps — one is not enough:
+> ```bash
+> ansible-config dump --only-changed                    # [defaults]: HOST_KEY_CHECKING
+> ansible-config dump --type connection --only-changed  # [ssh_connection]: ssh_args, pipelining
+> ```
+> `ssh_args` is connection-**plugin** config and never appears in the first dump. A repo can show
+> `HOST_KEY_CHECKING = True` while `ssh_args = -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`
+> disables verification completely — verified on ansible-core 2.21. Checking only the first dump is
+> how a "host key checking is on" claim survives review while being false.
 > Note this cuts both ways for review: a grep for `= False` will never catch the `#` form.
 
 ```ini
@@ -221,7 +236,7 @@ become_method = sudo
 [ssh_connection]
 # Faster; requires 'requiretty' to be off in sudoers on the targets.
 pipelining = True
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o PreferredAuthentications=publickey
+ssh_args = -o ControlMaster=auto -o ControlPersist=600s -o PreferredAuthentications=publickey
 ```
 
 The fully annotated version ships as `knowledge/templates/ansible/ansible.cfg` in the guideline repo

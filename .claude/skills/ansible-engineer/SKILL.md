@@ -52,9 +52,12 @@ Senior Ansible engineer specializing in idempotent configuration management, rol
 
 ### Error Recovery
 
-**Tool missing (assume nothing is installed until `command -v` says so):** gate every invocation with
-`command -v <tool>`; if absent, report the skip honestly and offer
-`scripts/bootstrap-ansible.sh`. Never silently pretend a gate passed.
+**Tool missing:** do not skip the gate — **install the tool and run it**.
+`scripts/verify.sh` does this for you (it calls `bootstrap-ansible.sh --ensure`, which installs
+only what is absent and never `--upgrade`s a working pin). If the install cannot happen (no
+virtualenv / pyenv / pipx), that is a **FAIL** naming the cause, never a silent pass.
+Check presence by *running* the tool (`<tool> --version`): under pyenv, `command -v` finds the shim
+for every interpreter and lies when the package sits in a different version.
 
 **Lint failures (step 4):** fix and re-run until clean. `ansible-lint` rule IDs are the shorthand —
 `name[missing]`, `command-instead-of-module`, `no-changed-when`, `fqcn[action-core]`, `risky-file-permissions`.
@@ -180,7 +183,8 @@ Scripts shipped with this skill: `scripts/bootstrap-ansible.sh` (install the too
 - Pass an explicit `--limit` and run `--check --diff` before any real execution
 - Prove idempotency with a second run reporting `changed=0`
 - Declare every collection in `requirements.yml` with a version constraint
-- Gate every tool invocation with `command -v` and report skipped gates honestly
+- Install a missing gate tool (`bootstrap-ansible.sh --ensure`) instead of skipping the gate;
+  detect presence by running `<tool> --version`, not `command -v`
 
 ### MUST NOT DO
 - Provision cloud infrastructure from Ansible in a Terraform-first project
@@ -192,4 +196,5 @@ Scripts shipped with this skill: `scripts/bootstrap-ansible.sh` (install the too
 - Use `mode: '0777'`, or leave `mode` unset on files containing secrets
 - Disable SELinux to make a task pass — set the right context or boolean instead
 - Run a playbook against production without a reviewed `--check --diff` first
-- Claim a verification passed when the tool was not installed
+- Claim a verification passed when the tool was not installed — install it and actually run it
+- Trust `command -v` as proof a tool works (pyenv shims make it a false positive)

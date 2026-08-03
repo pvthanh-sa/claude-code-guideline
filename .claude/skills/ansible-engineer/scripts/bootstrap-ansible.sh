@@ -14,14 +14,25 @@
 #
 # Usage:
 #   bootstrap-ansible.sh --dry-run   # print the plan, change nothing
-#   bootstrap-ansible.sh             # install
+#   bootstrap-ansible.sh             # install the full toolchain
 #   bootstrap-ansible.sh --check     # report what is present / missing, change nothing
+#   bootstrap-ansible.sh --ensure    # install ONLY what is missing, then exit 0
+#
+# --ensure is what verify.sh calls when a gate's tool is absent. House rule: a gate never
+# skips because a tool is missing — it installs the tool and runs. So --ensure is deliberately
+# narrow: it installs only the missing packages and only the missing collections, and it never
+# passes --upgrade, because silently bumping a working ansible-core can break pinned
+# collection compatibility mid-verification.
+#
+# Exit codes: 0 = everything required is now present · 1 = an install failed
+#             2 = bad usage, or no installer available (no venv / pyenv / pipx)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DRY_RUN=0
 CHECK_ONLY=0
+ENSURE=0
 
 # Self-documenting --help: replay the header comment block, whatever it currently says.
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
@@ -30,21 +41,25 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --check)   CHECK_ONLY=1 ;;
+    --ensure)  ENSURE=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
 
-# ansible-core floor is 2.17 by HOUSE POLICY, not because a pinned collection demands it:
-# amazon.aws 9.x, community.general 10.x, ansible.posix 2.x and community.docker 4.x all
-# declare only `requires_ansible: >=2.15.0` (amazon.aws first requires 2.17 at 10.0.0, which
-# requirements.yml's ceiling excludes). Keep this floor identical to CI and requirements.yml
-# regardless -- a laptop below CI is how a green pipeline ships a broken playbook.
+# EVERY range below is upper-bounded, and the bounds match knowledge/templates/ansible/
+# requirements.yml and the CI workflow exactly. An unbounded range here is not a convenience:
+# it silently installs a newer major than CI resolves, which is the "green pipeline, red
+# laptop" skew these files warn about -- inverted, and therefore harder to notice.
+#
+# The 2.17 floor is real, not decorative: amazon.aws >=11 and community.docker >=5 both
+# declare `requires_ansible: >=2.17.0`. (The older 9.x/4.x lines only needed 2.15 -- if you
+# ever lower the collection floors, re-check whether 2.17 is still required.)
 PY_PKGS=(
-  "ansible-core>=2.17"
-  "ansible-lint>=25.0"
-  "yamllint>=1.35"
-  "molecule>=25.0"
+  "ansible-core>=2.17,<2.22"
+  "ansible-lint>=25.0,<27.0"
+  "yamllint>=1.35,<2.0"
+  "molecule>=25.0,<27.0"
   "molecule-plugins[docker]"
   "boto3"        # required by the amazon.aws collection
   "botocore"
@@ -52,14 +67,20 @@ PY_PKGS=(
 )
 
 COLLECTIONS=(
-  "amazon.aws:>=9.0.0"
+  "amazon.aws:>=11.0.0,<12.0.0"
   "community.general:>=10.0.0,<11.0.0"
-  "ansible.posix:>=2.0.0"
-  "community.docker:>=4.0.0"
+  "ansible.posix:>=2.0.0,<3.0.0"
+  "community.docker:>=5.0.0,<6.0.0"
 )
 
 say()   { printf '%s\n' "$*"; }
 head2() { printf '\n== %s\n' "$*"; }
+
+# A tool is "present" only if it RUNS. `command -v` is not enough: a pyenv shim is on PATH for
+# every interpreter, so it answers yes even when the package was installed into a DIFFERENT
+# pyenv version -- and the tool then dies with "pyenv: <tool>: command not found". Treating
+# that as installed makes a gate fail and blame the playbook instead of the toolchain.
+have() { command -v "$1" >/dev/null 2>&1 && "$1" --version >/dev/null 2>&1; }
 
 # ------------------------------------------------------------------ installer selection
 INSTALLER=""
@@ -77,8 +98,11 @@ fi
 head2 "Current state"
 MISSING=0
 for t in ansible ansible-playbook ansible-galaxy ansible-lint yamllint molecule; do
-  if command -v "$t" >/dev/null 2>&1; then
+  if have "$t"; then
     printf '  %-18s %s\n' "$t" "$("$t" --version 2>/dev/null | head -1)"
+  elif command -v "$t" >/dev/null 2>&1; then
+    printf '  %-18s SHIM ONLY — on PATH but does not run (installed into another interpreter)\n' "$t"
+    MISSING=$((MISSING + 1))
   else
     printf '  %-18s MISSING\n' "$t"
     MISSING=$((MISSING + 1))
@@ -92,6 +116,89 @@ printf '  %-18s %s\n' "docker" "$(docker --version 2>/dev/null || echo 'MISSING 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   head2 "Check only — nothing changed"
   say "  $MISSING tool(s) missing."
+  exit 0
+fi
+
+# ------------------------------------------------------------------------------ --ensure
+# Narrow, idempotent, no --upgrade: install exactly the missing tools and collections so the
+# caller's gate can run. Anything already present is left alone.
+have_collection() {  # have_collection <namespace.name>
+  ansible-galaxy collection list 2>/dev/null | grep -qE "^$1[[:space:]]"
+}
+
+if [ "$ENSURE" -eq 1 ]; then
+  NEED_PKGS=()
+  have ansible-playbook || NEED_PKGS+=("ansible-core>=2.17,<2.22" "boto3" "botocore" "jmespath")
+  have ansible-lint     || NEED_PKGS+=("ansible-lint>=25.0,<27.0")
+  have yamllint         || NEED_PKGS+=("yamllint>=1.35,<2.0")
+
+  NEED_COLS=()
+  if have ansible-galaxy; then
+    for c in "${COLLECTIONS[@]}"; do
+      have_collection "${c%%:*}" || NEED_COLS+=("$c")
+    done
+  else
+    NEED_COLS=("${COLLECTIONS[@]}")   # no galaxy yet -> ansible-core is coming, so all of them
+  fi
+
+  if [ "${#NEED_PKGS[@]}" -eq 0 ] && [ "${#NEED_COLS[@]}" -eq 0 ]; then
+    head2 "Ensure — nothing to do"
+    say "  Every gate prerequisite is already present."
+    exit 0
+  fi
+
+  head2 "Ensure — installing ONLY what is missing"
+  [ "${#NEED_PKGS[@]}" -gt 0 ] && say "  packages:    ${NEED_PKGS[*]}"
+  [ "${#NEED_COLS[@]}" -gt 0 ] && say "  collections: ${NEED_COLS[*]}"
+
+  if [ "$INSTALLER" = "none" ]; then
+    say ""
+    say "  CANNOT INSTALL — no virtualenv, no pyenv, no pipx. A bare 'pip3 install' would"
+    say "  target the system interpreter, which modern distros refuse (PEP 668)."
+    say "  Create one of these, then re-run:"
+    say "    python3 -m venv ~/.venvs/ansible && . ~/.venvs/ansible/bin/activate"
+    say "    python3 -m pip install --user pipx && python3 -m pipx ensurepath   # new shell after"
+    exit 2
+  fi
+
+  if [ "${#NEED_PKGS[@]}" -gt 0 ]; then
+    if [ "$INSTALLER" = "pip" ]; then
+      # No --upgrade: only the missing ones are named, and a working pin stays put.
+      pip3 install "${NEED_PKGS[@]}" || { say "  ERROR: pip install failed"; exit 1; }
+      command -v pyenv >/dev/null 2>&1 && { pyenv rehash; say "  pyenv rehash done"; }
+    else
+      for p in "${NEED_PKGS[@]}"; do
+        case "$p" in
+          ansible-core*) pipx install "$p" && pipx inject ansible-core boto3 botocore jmespath ;;
+          boto3|botocore|jmespath) : ;;   # injected with ansible-core above
+          *) pipx install "$p" ;;
+        esac || { say "  ERROR: pipx install of '$p' failed"; exit 1; }
+      done
+    fi
+  fi
+
+  if [ "${#NEED_COLS[@]}" -gt 0 ]; then
+    command -v ansible-galaxy >/dev/null 2>&1 || {
+      say "  ERROR: ansible-galaxy still not on PATH after install."
+      say "  pyenv: run 'pyenv rehash'. pipx: open a new shell ('pipx ensurepath')."
+      exit 1; }
+    for c in "${NEED_COLS[@]}"; do
+      ansible-galaxy collection install "${c%%:*}:${c##*:}" || {
+        say "  ERROR: collection install of '${c%%:*}' failed"; exit 1; }
+    done
+  fi
+
+  head2 "Ensure — done"
+  for t in ansible-playbook ansible-lint yamllint; do
+    printf '  %-18s %s\n' "$t" "$(have "$t" && echo present || echo 'STILL MISSING')"
+  done
+  if command -v pyenv >/dev/null 2>&1; then
+    say ""
+    say "  Installed into pyenv '$(pyenv version-name 2>/dev/null | head -1)'."
+    say "  pyenv resolves per-directory, so a project on a DIFFERENT version sees only the shim"
+    say "  and the tool dies with 'pyenv: <tool>: command not found'. If that happens there:"
+    say "    pyenv local $(pyenv version-name 2>/dev/null | head -1)   # in the project dir"
+  fi
   exit 0
 fi
 
@@ -150,13 +257,21 @@ if [ "$INSTALLER" = "pip" ]; then
     say "  done"
   fi
 else
-  pipx install "ansible-core>=2.17"
-  pipx inject ansible-core boto3 botocore jmespath
-  pipx install "ansible-lint>=25.0"
-  pipx install "yamllint>=1.35"
-  pipx install "molecule>=25.0"
-  pipx inject molecule "molecule-plugins[docker]" || \
-    say "  NOTE: molecule-plugins[docker] not injected — check 'molecule drivers' before using it"
+  # Derived from PY_PKGS, never re-typed. A hardcoded copy here drifted out of sync with the
+  # pip branch once already: it installed UNBOUNDED versions (ansible-core 2.21, ansible-lint 26)
+  # while pip and CI were capped -- the exact "green pipeline, red laptop" skew, self-inflicted.
+  for p in "${PY_PKGS[@]}"; do
+    case "$p" in
+      ansible-core*)
+        pipx install "$p" || { say "  ERROR: pipx install '$p' failed"; exit 1; }
+        pipx inject ansible-core boto3 botocore jmespath || { say "  ERROR: pipx inject failed"; exit 1; } ;;
+      boto3|botocore|jmespath) : ;;                 # injected into ansible-core above
+      molecule-plugins*)
+        pipx inject molecule "$p" || \
+          say "  NOTE: $p not injected — check 'molecule drivers' before using the docker driver" ;;
+      *) pipx install "$p" || { say "  ERROR: pipx install '$p' failed"; exit 1; } ;;
+    esac
+  done
 fi
 
 head2 "Installing collections"
