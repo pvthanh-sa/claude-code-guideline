@@ -39,9 +39,10 @@ pip install --user checkov
 # gitleaks: static binary from github.com/gitleaks/gitleaks/releases  ·  betterleaks: see secret-scan README
 ```
 
-**Ansible projects only** — skip on a Terraform-only stack. Use the shipped bootstrap rather than a
-bare `pip3 install`, which modern distros refuse (PEP 668) and which would put ansible-core in the
-system interpreter's site-packages:
+**Ansible projects only** — not needed on a Terraform-only stack, and not something you must
+pre-install: Stage 3b runs `--ensure` itself rather than letting a gate skip. Use the shipped
+bootstrap rather than a bare `pip3 install`, which modern distros refuse (PEP 668) and which would
+put ansible-core in the system interpreter's site-packages:
 
 ```bash
 .claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run   # read the plan first

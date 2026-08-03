@@ -86,7 +86,7 @@ some loudly (terraform, scanners), some **silently** (MCP servers just don't sta
 | `uv`/`uvx` | **most AWS MCP servers** (spec data, pricing, live reads) — silent fail without it | `curl -LsSf https://astral.sh/uv/install.sh \| sh && uv python install 3.10` |
 | `docker` | terraform/github MCP + betterleaks Docker fallback | [docker install](https://docs.docker.com/engine/install/) |
 | `node`/`npx` | grafana MCP (only if used) | nvm / distro pkg |
-| `ansible-core` `ansible-lint` `yamllint` | **Stage 3b only** — skip entirely for a Terraform-only stack. Without them every G3b gate reports SKIPPED and `verify.sh` exits 3 INCONCLUSIVE (never 0) | `.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run` first — it picks venv/pyenv → pipx and refuses a bare system `pip3` (PEP 668) |
+| `ansible-core` `ansible-lint` `yamllint` | **Stage 3b only.** You do **not** need to pre-install these: Stage 3b installs whatever is missing (`bootstrap-ansible.sh --ensure`) rather than letting a gate skip. Pre-install only if you want the doctor green or you are air-gapped | `.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run` first — it picks venv/pyenv → pipx and refuses a bare system `pip3` (PEP 668) |
 | `molecule` (optional) | Stage 3b role testing in a container | same bootstrap script; needs `docker` |
 | `tflint` `checkov` `trivy` | Stage 3 local IaC scan (else SKIPPED, reported "not run") | see [`security-scans-cli.md`](security-scans-cli.md) §0 |
 | `betterleaks` (or `gitleaks`) | Stage 6 secret scan (hard-fails at G6 if none) | `brew install betterleaks` / binary / `docker pull ghcr.io/betterleaks/betterleaks:latest` |
@@ -244,8 +244,13 @@ echo "== module library =="
 test -d "$TF_MODULE_LIB/modules" && echo "ok  TF_MODULE_LIB ($TF_MODULE_LIB)" || echo "FAIL TF_MODULE_LIB unset or no modules/ — clone custom-infra (§1.0/§1.3)"
 echo "== CLIs / runtimes =="
 for t in terraform aws uvx docker tflint checkov trivy python3; do command -v $t >/dev/null && echo "ok  $t" || echo "FAIL $t (see §1.0)"; done
-# Stage 3b only — a Terraform-only machine SHOULD show these as warn, not FAIL.
-for t in ansible-playbook ansible-lint yamllint; do command -v $t >/dev/null && echo "ok  $t" || echo "warn no $t — Stage 3b (/ansible-implement) gates will report SKIPPED (§1.0)"; done
+# Stage 3b only. A tool counts only if it RUNS — under pyenv the shim is on PATH for every
+# interpreter, so `command -v` says yes while the tool dies with "pyenv: <tool>: command not found".
+for t in ansible-playbook ansible-lint yamllint; do
+  if command -v $t >/dev/null 2>&1 && $t --version >/dev/null 2>&1; then echo "ok  $t"
+  elif command -v $t >/dev/null 2>&1; then echo "warn $t is a pyenv SHIM ONLY (installed into another interpreter) — 'pyenv local <that version>' here, or let Stage 3b reinstall"
+  else echo "warn no $t — Stage 3b installs it on demand (bootstrap-ansible.sh --ensure); not needed for a Terraform-only stack"; fi
+done
 command -v betterleaks >/dev/null || command -v gitleaks >/dev/null && echo "ok  secret scanner" || echo "FAIL no betterleaks/gitleaks (§1.0)"
 command -v drawio >/dev/null && echo "ok  drawio (Stage 5 PNG auto-export)" || echo "warn no drawio CLI — Stage 5 degrades to manual PNG export + Mermaid mirror (§1.0)"
 command -v openssl >/dev/null && echo "ok  openssl" || echo "warn no openssl — only needed for mTLS projects (mint-certs.sh)"
@@ -294,6 +299,15 @@ else
   rmdir "$T/p/ansible/roles/r/tasks" "$T/p/ansible/roles/r" "$T/p/ansible/roles" "$T/p/ansible" "$T/p"
 fi
 rm -f "$T/x.tf"; rmdir "$T"
+echo "== spec template: inline copy vs file copy (they drift silently) =="
+# /spec-architect has no Bash, so it cannot read the guideline repo's template and must carry an
+# inline copy. Two copies drift: §8.1 was missing from the inline one, which is exactly the section
+# /ansible-implement reads. Compare the heading lists mechanically.
+diff <(sed -n '/^# Infra Spec/,/^## 11\./p' "$GUIDE/.claude/skills/spec-architect/SKILL.md" | grep -E '^#{1,2} ') \
+     <(sed -n '/^# Infra Spec/,/^## 11\./p' "$GUIDE/knowledge/templates/infra-spec-template.md"   | grep -E '^#{1,2} ') \
+  >/dev/null 2>&1 \
+  && echo "ok  spec template headings match (inline == knowledge/templates/)" \
+  || echo "FAIL spec template drift — /spec-architect's inline copy differs from knowledge/templates/infra-spec-template.md; diff the two heading lists"
 echo "== spec MCP config =="
 test -f ~/.claude/spec-mcp.json && { grep -q '<your-' ~/.claude/spec-mcp.json && echo "FAIL spec-mcp.json still has <your-> placeholders to fill (§1.4)" || echo "ok  spec-mcp.json filled"; } || echo "FAIL spec-mcp.json missing (§1.4)"
 echo "== AWS creds (read-only MCP profile) =="
@@ -310,7 +324,7 @@ All `ok`? You're ready for Stage 1. Any `FAIL` points at the section to fix.
 | --- | ----------------------------- | ------------------------------------------------------- | ------ | ---------------------------------- | ----------------------------------------------- |
 | 1   | `/spec-architect <name>`      | `docs/specs/<name>.spec.md`                             | **G1** | Spec right?                        | create folder → `/init-project`                 |
 | 2   | `/init-project`               | `CLAUDE.md`, `.mcp.json`, `.claude/`                    | **G2** | Detection right? fill `.mcp.json`? | `/add-dir` lib → `/iac-implement`               |
-| 3   | `/iac-implement <spec> <env>` | Terraform code + `terraform plan`                       | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
+| 3   | `/iac-implement <spec> <env>` *(Terraform-only — skip if no `.tf`)* | Terraform code + `terraform plan`   | **G3** | Plan OK?                           | `terraform apply tfplan` **or** `/infra-review` |
 | 3b  | `/ansible-implement <src> <dir>` *(optional — only if the stack has hosts)* | role/playbook + `--check --diff`      | **G3b** | Mapping + diff OK?                | **you** run the playbook twice (2nd = `changed=0`) → `/infra-review` |
 | 4   | `/infra-review <env>`         | merged report → `docs/reviews/<env>-<date>.md` (stack-aware roster) | **G4** | go / fix / no-go                   | fix chosen items → apply → `/infra-document`    |
 | 5   | `/infra-document <env>`       | `docs/infrastructure.md` + `infra.drawio` (one, or split into `infra-<slug>.drawio` views) + auto-exported PNG(s) + `README.md` | **G5** | doc accurate? diagram(s) correct + readable? | review doc + PNG(s), commit                     |
@@ -718,9 +732,10 @@ steps map almost 1:1 to tasks), or an existing bash script.
 
 ### 3b.3 What Claude does
 
-1. **Preflight** — resolves the guideline repo, then reports which of `ansible`, `ansible-playbook`,
-   `ansible-lint`, `yamllint`, `molecule` are actually installed. Nothing is assumed; authoring works
-   without them, only verification needs them.
+1. **Preflight** — resolves the guideline repo, then **installs any missing gate tool**
+   (`bootstrap-ansible.sh --ensure`: only what is absent, never `--upgrade`). A gate is never
+   skipped for a toolchain reason. Presence is tested by *running* the tool, because a pyenv shim
+   is on PATH for every interpreter and `command -v` lies when the package sits in another version.
 2. **Step→module map** — a table, presented *before* any YAML: source step → native module →
    idempotency mechanism. This is where the engineering judgment lives, so read it. A step that
    stays `command`/`shell` must justify itself and carry `creates:`/`removes:`/`changed_when:`.
@@ -729,8 +744,10 @@ steps map almost 1:1 to tasks), or an existing bash script.
    `requirements.yml`, `.ansible-lint`, `.yamllint`, and the `ansible-scan.yml` CI gate).
 4. **Verify ladder** — `yamllint` → `--syntax-check` → `ansible-lint --profile production` →
    `--check --diff --limit <one-host>`. Or in one shot:
-   `.claude/skills/ansible-engineer/scripts/verify.sh ansible/ --limit <host>`, which exits **3
-   INCONCLUSIVE** (never 0) when a blocking gate never ran because the tool is missing.
+   `.claude/skills/ansible-engineer/scripts/verify.sh ansible/ --limit <host>`.
+   `--limit` is **required** unless you pass `--no-diff`; the script refuses to guess (exit 2).
+   Exit `1` = a gate failed *or* a tool could not be installed; exit `3` = PARTIAL, gate 4 waived.
+   Only `0` means every gate ran and passed.
 
 ### 3b.4 Gate G3b — you run the playbook
 
@@ -1130,7 +1147,9 @@ cd ansible && ansible-playbook site.yml --limit <host> --diff   # ...twice; 2nd 
 | Long pause mid-run and the lab is burning money                       | Idle-floor services (aoss ≈$6/day, NAT, ALB, provisioned RDS) bill hourly while they exist. `terraform plan -destroy` → `apply tfplan-destroy`, resume later — state + code make the rebuild one apply (Step 3 §5).                                                                          |
 | Every `.yml` edit comes back with a wall of lint findings | The PostToolUse ansible hook is firing where it shouldn't. It only runs when `.ansible-lint` exists in the project root — if the noise is real findings, fix them; if it is line-length/truthy noise, `.yamllint` is missing or not being read (copy it from `knowledge/templates/ansible/dot-yamllint`). Note `ansible-lint` embeds yamllint and reports it as `yaml[*]` **errors** under the production profile: make a rule advisory via `warn_list` in `.ansible-lint`, **not** `level:` in `.yamllint`. |
 | `--syntax-check` fails with "couldn't resolve module/action 'amazon.aws.…'" | The collection isn't on the search path. Usually `collections_path` set in `ansible.cfg` (it **replaces** the default list rather than extending it, hiding `~/.ansible/collections`) — remove the key. Otherwise run `ansible-galaxy collection install -r requirements.yml`, and check `ansible --version` is ≥ 2.17 (our house floor). Note the pinned collections only declare `requires_ansible: >=2.15.0`, so a resolve failure here is more likely a missing install than a core-version mismatch — read what `ansible-galaxy collection list` actually shows. |
-| Ansible gates all report SKIPPED, or `verify.sh` exits 3 | The toolchain isn't installed — that is INCONCLUSIVE, never a pass. `.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run`, then run it for real. If the tools install but stay "command not found": pyenv needs `pyenv rehash`, pipx needs a new shell. |
+| `verify.sh` exits 3 | PARTIAL: gates 1–3 passed but gate 4 (`--check --diff`) was waived with `--no-diff`. Not a pass, and **not** enough for G3b — re-run with `--limit <host>` once a host is reachable. |
+| `verify.sh` exits 1 saying "the verification gates cannot run" | A required tool is missing AND could not be installed. Read the `cause:` line: usually no virtualenv/pyenv/pipx (create one — it prints the two commands), or `--no-install` was passed. This is deliberately a FAIL, not a skip. |
+| `pyenv: ansible-lint: command not found` — but `command -v` finds it | A pyenv **shim**: the tool was installed into a different pyenv version than the one this directory resolves to. `pyenv version-name` here vs where you installed; fix with `pyenv local <that version>` in the project, or re-run `bootstrap-ansible.sh --ensure` to install into the active one. This is why every check runs `<tool> --version` instead of trusting `command -v`. |
 | `/infra-review` says "contains neither Terraform nor Ansible" | Wrong target. The preflight looks for `*.tf` and for `ansible.cfg` / `site.yml` / `roles/*/tasks/` / `playbooks/` / `group_vars/`. Point it at the repo root for a mixed repo, or at the env dir for Terraform only. |
 | `/infra-review --live` still prompts on some AWS reads                 | The shipped `.claude/settings.json` bundle auto-approves the common read verbs, but a read outside it (or a stale copied `settings.json`) will prompt. Quick fix: add `"Bash(aws *)"` to `.claude/settings.local.json` (personal, gitignored) — safe because `--live` runs under the read-only `.mcp.json` profile. Never use `--dangerously-skip-permissions` (drops the destroy/apply guard). If it prompts because `.mcp.json` has **no** AWS profile, configure the read-only MCP profile ([`aws-iam-mcp-setup.md`](aws-iam-mcp-setup.md)) first. See Step 4 "review the live stack". |
 

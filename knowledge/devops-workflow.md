@@ -29,7 +29,7 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
    └───┬────────────────┘
        │
    ┌───▼────────────────┐   ── G3 ──►  you approve `terraform plan` BEFORE apply
-   │ 3. IAC            │
+   │ 3. IAC            │   TERRAFORM-ONLY — skip entirely if the project has no .tf
    │   /iac-implement   │   reuse/author modules → scaffold env → CI gate → fmt/validate/tflint/checkov/trivy/plan
    └───┬────────────────┘
        │  (you run `terraform apply tfplan`)
@@ -68,8 +68,8 @@ end-to-end flow **with an approval gate at every stage transition** — Claude n
 | Gate   | After step        | You receive                                                                | You decide                                                                 | After approval, run                                       |
 | ------ | ----------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
 | **G1** | `/spec-architect` | `docs/specs/<name>.spec.md` + list of open decisions                       | Is the spec right? Services/cost/SLO OK?                                   | create project folder → `/init-project`                   |
-| **G2** | `/init-project`   | `CLAUDE.md` (tracked) + `.claude/` & `.mcp.json` (**gitignored** — public-repo safe)      | Stack detected correctly? CLAUDE.md correct? Fill `.mcp.json` placeholders | `/add-dir` custom-infra → `/iac-implement <spec>`         |
-| **G3** | `/iac-implement`  | `terraform plan` output (NO apply)                                         | Plan correct? Resources sensible? Right modules reused?                    | you run `terraform apply tfplan` OR `/infra-review <env>`; after apply: scripted functional verify + (labs) same-day teardown |
+| **G2** | `/init-project`   | `CLAUDE.md` (tracked) + `.claude/` & `.mcp.json` (**gitignored** — public-repo safe)      | Stack detected correctly? CLAUDE.md correct? Fill `.mcp.json` placeholders | **branch on the detected stack:** Terraform → `/add-dir` custom-infra → `/iac-implement <spec>`; **Ansible-only → `/ansible-implement <spec> ansible/`** (skip G3) |
+| **G3** *(Terraform-only; an Ansible-only project goes straight from G2 to G3b)* | `/iac-implement`  | `terraform plan` output (NO apply)                                         | Plan correct? Resources sensible? Right modules reused?                    | you run `terraform apply tfplan` OR `/infra-review <env>`; after apply: scripted functional verify + (labs) same-day teardown |
 | **G3b** | `/ansible-implement` *(optional)* | role/playbook code + the step→module map + a reviewed `--check --diff` | Does the mapping hold? Is the diff what you expect? Which steps stayed manual? | **you** run `ansible-playbook … --limit <host> --diff` twice (second must be `changed=0`), paste both back |
 | **G4** | `/infra-review`   | one merged report (severity + savings + go/no-go), saved to `docs/reviews/<env>-<date>.md`; stack-aware roster; add `--live` (Terraform/AWS only) after deploy for a read-only drift + live-posture check | Which items to fix? Go or no-go?                                           | ask Claude to fix specific items, then `/infra-document`  |
 | **G5** | `/infra-document` | `docs/infrastructure.md` + `docs/diagrams/infra.drawio` (validator-gated) + auto-exported `infra.png` + `README.md` | Doc accurate? Diagram correct? README clear?                              | review doc + PNG, commit (fallback: export PNG + delete Mermaid) |
@@ -122,6 +122,11 @@ detection, generates `CLAUDE.md` + `.mcp.json`, and copies the relevant skills/a
 
 ### Step 3 — Implement IaC: `/iac-implement docs/specs/<name>.spec.md [env-dir]`
 
+> **Skip this whole step when the project has no Terraform.** G3 is not optional-by-preference, it is
+> Terraform-specific: Phase 0 hard-exits without `TF_MODULE_LIB`, and the whole stage is built around
+> the `MODULES.md` module library. A configuration-management-only project (hosts you did not
+> provision here — on-prem, another provider, hand-made VMs) goes **G2 → G3b** and never touches G3.
+
 First, load the module library:
 
 ```
@@ -151,11 +156,12 @@ tear down the same day with `plan -destroy` → `apply tfplan-destroy` — idle-
 Terraform cannot reach: what runs *inside* an EC2 instance or an on-prem box. `<source>` is a spec,
 an ops runbook (`docs/runbooks/*.md` — the richest source), or an existing bash script.
 
-The skill maps every source step to a **native module** (a step with no module is the only candidate
-for `command`, and then it carries `creates:`/`removes:`/`changed_when:`), scaffolds the role with
-`.example` twins for inventory and vars, installs `.ansible-lint` / `.yamllint` / the
-`ansible-scan.yml` CI gate, then runs `yamllint → --syntax-check → ansible-lint --profile production
-→ --check --diff --limit <one-host>`.
+The skill **installs any missing gate tool first** (`bootstrap-ansible.sh --ensure`) — a gate is
+never skipped for a toolchain reason — then maps every source step to a **native module** (a step
+with no module is the only candidate for `command`, and then it carries
+`creates:`/`removes:`/`changed_when:`), scaffolds the role with `.example` twins for inventory and
+vars, installs `.ansible-lint` / `.yamllint` / the `ansible-scan.yml` CI gate, and runs
+`yamllint → --syntax-check → ansible-lint --profile production → --check --diff --limit <one-host>`.
 
 Values that come from infrastructure are **run-time inputs**, never re-declared:
 `-e "vpn_psk=$(terraform -chdir=<env> output -raw tunnel1_psk)"`. Terraform provisions; Ansible

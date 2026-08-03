@@ -44,8 +44,9 @@ Communicate in Vietnamese when user speaks Vietnamese.
   (it skips `command`/`shell`, the exact task class that breaks idempotency)
 - Validate chain: `yamllint` → `--syntax-check` → `ansible-lint --profile production` →
   `--check --diff --limit <host>`; enforce the same in CI (`.github/workflows/ansible-scan.yml`)
-- The toolchain is often absent — gate every invocation with `command -v` and report a skipped
-  gate as skipped, never as a pass
+- The toolchain is often absent — a gate **installs** it (`bootstrap-ansible.sh --ensure`) and
+  runs; it never skips. An impossible install is a FAIL with the cause. Test presence by running
+  `<tool> --version`, not `command -v` (a pyenv shim answers yes for the wrong interpreter)
 - **The human runs the playbook.** Author, verify, present the diff, stop
 
 ### GitHub Actions
@@ -78,7 +79,8 @@ Each stage is a discrete skill that **STOPS at an approval gate** — never auto
 
 - **G1** — approve `docs/specs/<name>.spec.md` before init
 - **G2** — approve `CLAUDE.md` + fill `.mcp.json` before writing IaC
-- **G3** — approve `terraform plan` BEFORE `apply` (never auto-apply)
+- **G3** — *(Terraform-only; a project with no `.tf` goes G2 → G3b)* approve `terraform plan`
+  BEFORE `apply` (never auto-apply)
 - **G3b** — *(only when the stack has hosts to configure)* approve the Ansible role + its
   `--check --diff`; **you** run the playbook, never Claude. Ansible configures what Terraform
   provisioned, so it sits between apply and review — not at the end

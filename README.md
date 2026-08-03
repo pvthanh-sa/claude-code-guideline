@@ -61,8 +61,8 @@ gate at every step** — Claude never auto-advances and never runs `terraform ap
 
 - **Stage 1 — `/spec-architect`**: co-design `docs/specs/<name>.spec.md` (Well-Architected + pricing).
 - **Stage 2 — `/init-project`**: detect stack (reads the spec), generate `CLAUDE.md` + `.mcp.json`.
-- **Stage 3 — `/iac-implement`**: reuse the custom module library (`MODULES.md`) → scaffold an
-  environment → `fmt/validate/tflint/checkov/plan`.
+- **Stage 3 — `/iac-implement`** *(Terraform-only — an Ansible-only project skips it)*: reuse the
+  custom module library (`MODULES.md`) → scaffold an environment → `fmt/validate/tflint/checkov/plan`.
 - **Stage 3b — `/ansible-implement`** *(only when the stack has hosts to configure)*: turn a spec,
   runbook or bash script into an idempotent role → `yamllint/--syntax-check/ansible-lint` → a
   reviewed `--check --diff`. Terraform provisions, Ansible configures, so it runs after the apply.
@@ -79,6 +79,11 @@ gate at every step** — Claude never auto-advances and never runs `terraform ap
 **[`knowledge/pipeline-usage-guide.md`](knowledge/pipeline-usage-guide.md)**.
 Quick reference map: [`knowledge/devops-workflow.md`](knowledge/devops-workflow.md).
 Install the pipeline skills once per machine: see [`knowledge/setup-new-project.md`](knowledge/setup-new-project.md) §1.
+
+**Before starting an Ansible project**, read
+[`knowledge/ansible-track-readiness.md`](knowledge/ansible-track-readiness.md) — what the Ansible
+track has actually been proven to do on real hosts, what nobody has tried yet, and the per-machine
+vs per-project setup split (per-project files are **copies**, so they go stale).
 
 ---
 
