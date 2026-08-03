@@ -56,14 +56,24 @@ Read the following files to build a complete picture of the project:
 - `.env.example` — required environment variables
 - `docker-compose.yml` or `docker-compose.yaml` — local dev services
 
-**CI/CD Detection:** Read `README.md` only — do NOT look for `.github/workflows/`. CI/CD files may not exist yet; the README describes the intended CI/CD platform (GitHub Actions, GitLab CI, Jenkins, CircleCI, ArgoCD, etc.).
+**CI/CD Detection:** Read `README.md` **and the approved spec** — do NOT look for
+`.github/workflows/`. CI/CD files may not exist yet; the README or the spec describes the intended
+platform (GitHub Actions, GitLab CI, Jenkins, CircleCI, ArgoCD, etc.). A spec-first repo often has
+no README at all.
+
+> **Greenfield-from-spec is the normal case at G2, and the filesystem is empty by definition.**
+> Stage 3/3b is what creates `ansible/`, `*.tf`, `Dockerfile`. So a detection row whose evidence is
+> "does this file exist" answers **no** for a project whose spec is entirely about that stack.
+> **The approved spec outranks the filesystem** — it is the strongest signal (you read it above).
+> Detecting "no Ansible" here means G3b starts with no `ansible-engineer` skill, no `ansible.md`
+> rule and no `ansible-reviewer` agent.
 
 After reading, build a detection matrix. For each item below, note **yes / no / maybe**:
 
 | Category             | Detected? | Evidence                                  |
 | -------------------- | --------- | ----------------------------------------- |
 | Terraform            |           | .tf files found?                          |
-| Ansible / config-mgmt |          | ansible.cfg, site.yml, roles/*/tasks/, playbooks/, group_vars/, requirements.yml? |
+| Ansible / config-mgmt |          | ansible.cfg, site.yml, roles/*/tasks/, playbooks/, group_vars/, requirements.yml — **or declared in an approved spec** |
 | Docker               |           | Dockerfile / docker-compose?              |
 | Kubernetes / Helm    |           | k8s/ charts/ manifests?                   |
 | ECS (AWS)            |           | ecs in terraform or README?               |
@@ -252,7 +262,9 @@ cpx "$GUIDELINE_CLAUDE/agents/ansible-reviewer.md" ".claude/agents/"
 cpx "$GUIDELINE_CLAUDE/agents/cost-optimizer.md"    ".claude/agents/"
 cpx "$GUIDELINE_CLAUDE/agents/incident-responder.md" ".claude/agents/"
 
-# If security-sensitive (finance, healthcare, PII, compliance requirements)
+# ALWAYS copy — not conditional. /infra-review's roster is security-auditor + the per-stack
+# reviewers, and the workflow REFUSES to emit "go" when a reviewer did not run. Gating this on
+# "security-sensitive" hands a non-sensitive project a G4 that can never pass.
 cpx "$GUIDELINE_CLAUDE/agents/security-auditor.md" ".claude/agents/"
 ```
 
@@ -315,7 +327,7 @@ detected technology isn't here, look it up by name in the catalog / setup doc an
 | Condition                                          | Add MCP servers (keys in the catalog)           |
 | -------------------------------------------------- | ----------------------------------------------- |
 | Any AWS service detected (ECS/EKS/RDS/Lambda/etc.) | `aws-api`, `aws-knowledge`, `cloudwatch`, `iam` |
-| New project / architecture design phase            | `well-architected`, `aws-pricing`               |
+| New project / design phase **AND AWS detected**     | `well-architected`, `aws-pricing`               |
 | Terraform detected                                 | `terraform`, `iac`                              |
 | Ansible detected                                   | **none** — see the note below                   |
 | ECS detected                                       | `ecs`                                           |
@@ -435,6 +447,7 @@ Before printing the summary, run a **best-effort AWS credentials preflight** (so
 *now* — not at Stage 3 — whether `terraform plan` will work at G3):
 
 ```bash
+# Skip this whole block when no AWS was detected — it feeds a section that is itself omitted then.
 aws sts get-caller-identity --query Account --output text 2>&1 | head -1
 ```
 
@@ -454,7 +467,7 @@ After completing all phases, print a summary:
   - settings.json · skills/ [N: list] · agents/ [N: list] · rules/ [N: list]
 - .mcp.json (gitignored) — [N MCP servers configured]
 
-### AWS credentials preflight:
+### AWS credentials preflight:  [OMIT THIS WHOLE SECTION when no AWS was detected]
 [✅ valid — account ····XXXX, terraform plan will work at Stage 3 (G3)
  | ⚠️ invalid/absent — Stage 3 stops after the local validate chain; fix credentials
    (aws configure / SSO login) before expecting a plan at G3]
@@ -470,14 +483,28 @@ After completing all phases, print a summary:
 2. Review CLAUDE.md — add gotchas, verify commands are correct
    (`.mcp.json` is gitignored — never commit it; it holds local profile/secrets)
 
-3. Next in the DevOps pipeline (Stage 3 — IaC): load the module library and implement:
+3. Next in the DevOps pipeline — **branch on the stack you just detected**:
+
+   [Terraform detected → Stage 3 (G3):]
    /add-dir $TF_MODULE_LIB   # the custom module library (set TF_MODULE_LIB — Guide §1.3)
    /iac-implement docs/specs/<name>.spec.md <env-dir>
-   (see knowledge/devops-workflow.md for the full Spec → Init → IaC → Review flow)
+
+   [Ansible but NO Terraform → skip G3 entirely and go to Stage 3b (G3b):]
+   /ansible-implement docs/specs/<name>.spec.md ansible/
+   # G3 is Terraform-only — it hard-exits without TF_MODULE_LIB and has nothing to build here.
+
+   [Both → G3 first, you apply, then G3b configures what it provisioned.]
+
+   (see knowledge/devops-workflow.md for the full Spec → Init → IaC → Configure → Review flow)
 ```
 
 > This is **Gate G2** of the pipeline — stop here for the human to fill `.mcp.json` placeholders
-> and review `CLAUDE.md` before moving to Stage 3. Do not auto-run `/iac-implement`.
+> and review `CLAUDE.md` before moving on. Do not auto-run the next stage.
+>
+> **Name the correct next stage — do not default to `/iac-implement`.** On a project with no
+> Terraform, G3 is not "skipped reluctantly", it simply does not apply: it is built on
+> `TF_MODULE_LIB` + `MODULES.md` and exits 1 without them. Pointing an Ansible-only project at G3
+> sends the operator into a hard error for no reason.
 
 ---
 

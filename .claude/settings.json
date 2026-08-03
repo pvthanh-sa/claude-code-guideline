@@ -9,7 +9,6 @@
       "Bash(terraform state show*)",
       "Bash(terraform output*)",
       "Bash(terraform graph*)",
-
       "Bash(aws * describe*)",
       "Bash(aws * list*)",
       "Bash(aws sts get-caller-identity*)",
@@ -33,7 +32,6 @@
       "Bash(aws cloudwatch get-dashboard*)",
       "Bash(aws logs get*)",
       "Bash(aws logs filter-log-events*)",
-
       "Bash(ansible-doc*)",
       "Bash(ansible-config dump*)",
       "Bash(ansible-config view*)",
@@ -41,6 +39,8 @@
       "Bash(ansible-galaxy role list*)",
       "Bash(ansible-lint --profile production --nocolor .)",
       "Bash(ansible-lint --profile production --nocolor ansible/)",
+      "Bash(ansible-lint --profile production --nocolor)",
+      "Bash(ansible-lint --profile production)",
       "Bash(ansible-lint --profile production .)",
       "Bash(ansible-lint --profile production ansible/)",
       "Bash(ansible-lint --nocolor -q *)",
@@ -51,7 +51,6 @@
       "Bash(molecule --version*)",
       "Bash(ansible-vault encrypt*)",
       "Bash(ansible-vault encrypt_string*)",
-
       "Bash(docker build*)",
       "Bash(docker images*)",
       "Bash(docker ps*)",
@@ -86,13 +85,11 @@
       "Bash(aws cloudtrail delete-trail *)",
       "Bash(aws kms schedule-key-deletion *)",
       "Bash(aws kms disable-key *)",
-
       "Bash(ansible *)",
       "Bash(ansible-vault decrypt *)",
       "Bash(ansible-vault view*)",
       "Bash(ansible-lint --fix*)",
       "Bash(ansible-lint --write*)",
-
       "Bash(rm -rf *)",
       "Bash(rm -fr *)",
       "Bash(git push --force *)",

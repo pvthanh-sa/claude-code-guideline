@@ -67,28 +67,30 @@ echo "  templates: $GUIDELINE/knowledge/templates/ansible"
 echo "  scripts:   $AE/scripts"
 ```
 
-### 0.2 Establish what is actually runnable
+### 0.2 Make the toolchain runnable — install it, do not plan around it
 
-Never promise a verification you cannot run. The Ansible toolchain is not part of the pipeline
-baseline, so assume it is absent until proven otherwise.
+The Ansible toolchain is not part of the pipeline baseline, so it is normally absent on the first
+run. **Install it now rather than letting the verify gates skip later.** A gate that never ran
+produces no evidence, and "inconclusive" is indistinguishable from "fine" a week later.
 
 ```bash
-# GUARD: report honestly instead of assuming a toolchain.
-for t in ansible ansible-playbook ansible-lint yamllint molecule; do
-  if command -v "$t" >/dev/null 2>&1; then
-    printf '  %-16s %s\n' "$t" "$($t --version 2>/dev/null | head -1)"
-  else
-    printf '  %-16s MISSING\n' "$t"
-  fi
+# Presence = the tool RUNS. `command -v` is a false positive under pyenv: the shim is on PATH for
+# every interpreter, so it answers yes even when the package lives in a different pyenv version --
+# and the gate then dies with "pyenv: ansible-lint: command not found", which reads as a broken
+# PLAYBOOK rather than a broken toolchain.
+have() { command -v "$1" >/dev/null 2>&1 && "$1" --version >/dev/null 2>&1; }
+for t in ansible ansible-playbook ansible-lint yamllint; do
+  printf '  %-18s %s\n' "$t" "$(have "$t" && "$t" --version 2>/dev/null | head -1 || echo MISSING)"
 done
+
+# Show the plan, then install only what is missing (never --upgrade a working pin).
+"$AE/scripts/bootstrap-ansible.sh" --dry-run
+"$AE/scripts/bootstrap-ansible.sh" --ensure
 ```
 
-If anything is missing, offer the bootstrap and continue authoring (authoring does not need the
-tools; only verification does):
-
-```bash
-"$AE/scripts/bootstrap-ansible.sh" --dry-run   # show the plan, change nothing
-```
+If the install is impossible (no virtualenv, no pyenv, no pipx — `--ensure` exits 2 and prints the
+two commands that fix it), say so plainly and **stop before promising any verification**. Authoring
+can continue, but the G3b report must state that no gate ran and why.
 
 ### 0.3 Detect the project shape so you extend rather than reinvent
 
@@ -101,6 +103,25 @@ grep -rn 'ansible' .gitignore 2>/dev/null    # inherit the existing ignore conve
 
 > If an `ansible/` tree already exists, **match its conventions** — inventory format, group naming,
 > vault layout. Do not impose a different layout on an existing project.
+
+### 0.4 Prove you can reach a target — before authoring, not after
+
+Gate 4 (`--check --diff`) is blocking and needs a live host. Discovering at the end that nothing is
+reachable means the whole stage lands on PARTIAL and the work has to be redone once the fleet is up.
+**A provider API saying `running` is not reachability** — an instance can be `active/running/ok` in
+the provider's console while the guest never finished booting.
+
+```bash
+# One host is enough to answer the question. Replace with a real target from the inventory.
+ssh -i <key> -o BatchMode=yes -o ConnectTimeout=8 <user>@<host> true && echo "reachable" \
+  || echo "NOT reachable — gate 4 cannot run"
+```
+
+If nothing is reachable, say so **now** and agree what happens: author anyway and land on PARTIAL
+(exit 3, G3b unsatisfied), or stop until the fleet is fixed. Do not discover it at gate 4.
+
+A useful discriminator when a host answers the provider API but not SSH: test **both address
+families**. An ISP or transit block hits one family; a guest that never booted is silent on both.
 
 ---
 
@@ -248,11 +269,15 @@ The CI gate mirrors the Terraform one — advisory `yamllint`, blocking `--synta
 ## Phase 3: Verify (deterministic gates)
 
 ```bash
-"$AE/scripts/verify.sh" ansible/
+"$AE/scripts/verify.sh" ansible/ --limit <single-host>   # the full ladder
+# no host reachable yet? waive gate 4 EXPLICITLY — it still exits 3, never 0:
+"$AE/scripts/verify.sh" ansible/ --no-diff
 ```
 
-Exit codes matter: `0` all blocking gates ran and passed · `1` a blocking gate failed · `3`
-**INCONCLUSIVE** — a blocking gate never ran because the tool is missing. Never report `3` as a pass.
+`--limit` is required unless you pass `--no-diff`; the script refuses to guess (exit 2). Exit codes:
+`0` every gate ran and passed · `1` a gate FAILED or a tool could not be installed · `2` bad usage ·
+`3` **PARTIAL** — gates 1–3 passed but gate 4 was waived. **Never report 1, 2 or 3 as a pass**, and
+never report 3 as satisfying G3b.
 
 Or step by step. **Use `if`/`else`, never `cmd && tool || echo SKIPPED`** — in that form a *failing*
 tool also triggers the `||`, so a broken blocking gate silently reports as "SKIPPED":

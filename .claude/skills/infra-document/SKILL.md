@@ -198,15 +198,35 @@ done
 
 ## Phase 3.5: Coverage check (diagram vs code)
 
-Make sure no component was dropped. List the module instances in the env's `main.tf` and confirm each
+Make sure no component was dropped. Enumerate the components the code declares and confirm each
 appears as a node in **at least one** diagram (and a row in §4 Components) — coverage is the **union**
-across all `infra*.drawio` when you split:
+across all `infra*.drawio` when you split.
+
+The enumeration source depends on the stack. **Never run the Terraform branch unguarded** — on an
+Ansible-only project `main.tf` does not exist, and a bare `grep` there exits 2 with
+`No such file or directory`, which silently degrades the whole coverage gate to "nothing to check":
 
 ```bash
-grep -nE '^[[:space:]]*module[[:space:]]+"' <env-dir>/main.tf
+# Terraform: module instances are the components.
+if [ -f "<env-dir>/main.tf" ]; then
+  grep -nE '^[[:space:]]*module[[:space:]]+"' "<env-dir>/main.tf"
+else
+  echo "no main.tf — not a Terraform target; using the configure-track source below"
+fi
+
+# Ansible (or a mixed repo): the components are the ROLES and the host GROUPS they run against.
+if [ -f ansible/site.yml ]; then
+  # '-?' because `hosts:` sits under `- name:` with no dash of its own, while `role:` carries one.
+  grep -nE '^[[:space:]]*-?[[:space:]]*(role:|hosts:)' ansible/site.yml
+  ls -d ansible/roles/*/ 2>/dev/null
+  grep -nE '^\[' ansible/inventory.ini.example 2>/dev/null || true   # host groups
+fi
 ```
 
-For every module found, verify there's a matching node + components row. **Flag any module missing
+**At least one branch must produce output.** If both are empty the target holds neither stack and the
+diagram cannot be coverage-checked — say so plainly rather than reporting a vacuous pass.
+
+For every component found, verify there's a matching node + components row. **Flag any one missing
 from the diagram** and add it — or note why it's intentionally omitted (e.g. a pure IAM/role module).
 This catches "drew it but forgot X" before the human reviews at G5. A component whose icon wasn't in
 the catalog still counts as covered **only if** it's drawn as a labeled fallback box — a missing

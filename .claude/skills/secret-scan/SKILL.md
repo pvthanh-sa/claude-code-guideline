@@ -95,27 +95,48 @@ manages git themselves).
 
 ## Scan mode (`--scan`, default)
 
-Pick the scanner (Betterleaks preferred), then scan the repo before push. Use each tool's native
-invocation — betterleaks uses the `git` subcommand, gitleaks uses `detect`:
+Two checks, and they catch different things. **Run both.**
+
+### 1. Tracked paths — the class a content scanner cannot see
+
+```bash
+git ls-files | grep -nE '(^|/)(\.vault_pass|\.env|\.mcp\.json|credentials\.json|id_(rsa|ed25519|ecdsa))$|(^|/)group_vars/[^/]+/vault$|(^|/)backend-.*\.hcl$|\.(pem|p12|pfx|tfstate)$' \
+  && echo "❌ a credential FILE is tracked — see the hook's remediation order" || echo "✅ no credential file tracked"
+```
+
+Verified on a real Ansible project: `.vault_pass` holds the key that decrypts every vault in the
+repo, and the scanner reads it and reports **no leaks found**. It is right to — a bare high-entropy
+string with no keyword context matches no rule. The same is true of a raw token in `.mcp.json`. For
+these files the only protection is `.gitignore`, which is one `git add -f` away from being bypassed
+with no second opinion from the content scan. The pre-push hook runs this check *first*, and fails
+closed.
+
+### 2. Content
+
+Pick the scanner (Betterleaks preferred). Use each tool's native invocation — betterleaks uses the
+`git` subcommand, gitleaks uses `detect`. **Check whether the repo has any commits first:**
+
 ```bash
 CFG=""; [ -f .gitleaks.toml ] && CFG="--config .gitleaks.toml"
 BL_IMG="ghcr.io/betterleaks/betterleaks:latest"
+# A repo with no commits has no history to scan. `git .` / `detect` then examines ZERO BYTES
+# and prints "no leaks found" -- a green gate that looked at nothing. Scan the tree instead.
+if git rev-parse --verify HEAD >/dev/null 2>&1; then MODE=git; else MODE=dir; echo "note: no commits yet — scanning the working tree"; fi
 if command -v betterleaks >/dev/null 2>&1; then
-  betterleaks git . --redact $CFG
+  betterleaks "$MODE" . --redact $CFG
 elif command -v gitleaks >/dev/null 2>&1; then
-  gitleaks detect --no-banner --redact $CFG
+  if [ "$MODE" = git ]; then gitleaks detect --no-banner --redact $CFG; else gitleaks dir . --no-banner --redact $CFG; fi
 elif command -v docker >/dev/null 2>&1 && docker image inspect "$BL_IMG" >/dev/null 2>&1; then
   # No PATH binary but the Docker image is pulled — run betterleaks through it.
   # -u matches host ownership (avoids git "dubious ownership"); repo mounted at /repo.
-  docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo "$BL_IMG" git . --redact $CFG
+  docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo "$BL_IMG" "$MODE" . --redact $CFG
 else
   echo "❌ no scanner — install a binary, or: docker pull $BL_IMG (see $TPL/README.md)"; exit 1
 fi
 ```
-> The pre-push hook uses this **same three-way detection** (binary → binary → Docker image), so a
-> Docker-only Betterleaks install drives both the on-demand scan and the local gate — no separate
-> binary needed. (To also catch **uncommitted** secrets in a mostly-unstaged repo, add a working-tree
-> pass: swap `git .` for `dir .`.)
+> The pre-push hook uses this **same three-way detection** (binary → binary → Docker image) and the
+> same no-commit fallback, so a Docker-only Betterleaks install drives both the on-demand scan and
+> the local gate — no separate binary needed.
 - Exit 0 → clean. Non-zero → potential secret(s) found (output is redacted).
 - If findings appear, summarize: file, rule, and the remediation order (remove → **rotate** →
   ignore only if false positive via `.gitleaksignore`).
@@ -126,6 +147,8 @@ fi
 ## Secret scan (G6) — <repo>
 
 Scanner: <betterleaks binary | gitleaks binary | betterleaks docker>   Guardrail: <installed | not installed>
+
+Checks run: tracked-path guard ✅|❌ · content scan (<committed history | working tree>) ✅|❌
 
 ### Result: ✅ no secrets   |   ❌ N potential secret(s)
 [if findings: list file · rule · (value redacted)]
@@ -142,6 +165,8 @@ Scanner: <betterleaks binary | gitleaks binary | betterleaks docker>   Guardrail
 
 ## Notes
 - The local hook blocks `git push`; bypass is `git push --no-verify` (discourage — user owns the risk).
+- Say **which target was scanned**, never just "clean". "History" and "working tree" answer different
+  questions, and on a fresh repo the first one is vacuous.
 - CI (`secret-scan.yml`) is the server-side backstop (full-history scan on push/PR).
 - Optional 3rd layer: GitHub native push protection (repo settings) — see `$TPL/README.md`.
 - Complements the `security-auditor` agent (pattern grep) with a real, deterministic tool gate.

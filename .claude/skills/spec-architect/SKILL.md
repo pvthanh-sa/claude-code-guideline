@@ -31,19 +31,42 @@ Well-Architected design, estimate cost, and capture it all in a reviewable spec 
 
 ## Phase 1: Discovery (interactive — do not skip)
 
-Read any context already present (`README.md`, existing `docs/specs/*`, an `.tf` tree if the
-user points at one). Then **ask the user** the open questions below. Use the `AskUserQuestion`
-tool for choices with clear options; ask free-form for the rest. **Batch related questions** —
-don't interrogate one line at a time. Cover:
+Read any context already present (`README.md`, an existing requirements/runbook doc, existing
+`docs/specs/*`, a `.tf` tree or an `ansible/` tree if the user points at one). Then **ask the user**
+the open questions below. Use the `AskUserQuestion` tool for choices with clear options; ask
+free-form for the rest. **Batch related questions** — don't interrogate one line at a time.
 
-- **Workload:** what is being deployed? (web API, worker, static frontend, data pipeline…)
-- **Traffic / scale:** expected RPS, growth, spiky vs steady, peak hours
+**First establish the stack, because it decides which question set applies:**
+provisioning (Terraform/cloud), configuration management (Ansible over existing hosts), or both.
+
+**Always ask:**
+- **Workload:** what is being deployed or managed?
 - **Environments:** which of develop / demo / staging / production; same or different accounts
-- **Data:** datastore (Aurora PostgreSQL/MySQL, DynamoDB, Redis…), size, retention
 - **Compliance / sensitivity:** PII / healthcare / finance? any standard (HIPAA/PCI/SOC2)?
+- **Integrations:** CI/CD platform, existing accounts, external services
+- **Acceptance:** how will the human verify this is done? (fills §11 — see Phase 4)
+
+**If the stack provisions cloud infrastructure, also ask:**
+- **Traffic / scale:** expected RPS, growth, spiky vs steady, peak hours
+- **Data:** datastore (Aurora PostgreSQL/MySQL, DynamoDB, Redis…), size, retention
 - **Budget:** rough monthly ceiling, cost sensitivity (non-prod allowed to be cheap?)
 - **Availability:** SLO target, multi-AZ, multi-region, RTO/RPO
-- **Integrations:** CI/CD platform, existing VPC/account, external services
+
+**If the stack configures existing hosts, ask these instead — none of them are optional, and the
+cloud question set above answers none of them:**
+- **Fleet shape:** how many hosts, which OS families *and generations*, which providers/locations
+- **Reachability:** direct SSH or via bastion? which user and key does the first connection use?
+- **Blast radius policy:** max hosts touchable in one run; rolling or all-at-once; who may run it
+- **Access today:** who has accounts/keys now, and where is that list kept (if anywhere)
+- **Privilege model:** sudo with password or NOPASSWD; is there an identity system to defer to
+- **Existing state:** is any of this configured already, by hand or by script? what must not break
+- **Lockout policy:** what is the recovery path if SSH breaks — console, IPMI, provider rescue?
+
+> **No user in the session** (headless, CI, or a subagent — `AskUserQuestion` cannot reach anyone)?
+> Do **not** silently invent answers, and do not skip to Phase 2 with the questions unanswered.
+> Write every unanswered question into §9 using the Recommendation / Need-from-you split below,
+> mark the spec header **`status: DRAFT — Phase 1 not interviewed`**, and say so in your closing
+> report. A spec built on assumed discovery is the thing G1 exists to catch.
 
 Handle "unclear" in two ways — never make the user invent the answer, and never fabricate facts:
 
@@ -73,8 +96,10 @@ Design to the project rules: least-privilege IAM, encryption at rest + in transi
 SGs, no public SSH, secrets in Secrets Manager/SSM (`.claude/rules/security.md`), and AWS-primary
 + Terraform defaults (`.claude/CLAUDE.md`).
 
-> **Mandatory security default — CloudFront origin mTLS.** Whenever the design has **CloudFront in
-> front of an origin you control** (ALB / custom origin), you MUST lock the origin to the
+> **Mandatory security default — CloudFront origin mTLS** *(applies only when CloudFront is in
+> scope; if the design has no CloudFront, this rule is silent — do not carry an N/A row for it).*
+> Whenever the design has **CloudFront in front of an origin you control** (ALB / custom origin),
+> you MUST lock the origin to the
 > distribution with **origin mTLS** — CloudFront presents a client certificate the origin verifies.
 > A CloudFront **prefix list or a shared-secret header alone is NOT sufficient**: the origin-facing
 > CloudFront IP ranges are shared across all AWS accounts, so anyone can point their own distribution
@@ -83,15 +108,28 @@ SGs, no public SSH, secrets in Secrets Manager/SSM (`.claude/rules/security.md`)
 > trust store). Exceptions: **S3 origins → OAC**; **in-VPC origins → prefer VPC origins/PrivateLink**.
 > Do not silently omit this — if the user declines it, record the residual risk explicitly in §9.
 
-## Phase 3: Map to reusable modules (optional but recommended)
+## Phase 3: Map to reusable units (optional but recommended)
 
-If the custom module library is available — i.e. the user has `/add-dir`'d the module library
-(at `$TF_MODULE_LIB`), or a `MODULES.md` catalog is readable there — pre-fill §8 by mapping each architecture component to an existing
-module (`network`, `alb`, `ecs`, `rds`, `elasticache_*`, `acm`, `waf_standard`, `cloudfront`,
-`s3_*`, …). Flag any component with **no** matching module as "new module needed". If the library
-isn't loaded, leave §8 as a TODO and note it.
+**Terraform stacks — map to modules.** If the custom module library is available (the user has
+`/add-dir`'d it at `$TF_MODULE_LIB`, or a `MODULES.md` catalog is readable there), pre-fill §8 by
+mapping each architecture component to an existing module (`network`, `alb`, `ecs`, `rds`,
+`elasticache_*`, `acm`, `waf_standard`, `cloudfront`, `s3_*`, …). Flag any component with **no**
+matching module as "new module needed". If the library isn't loaded, leave §8 as a TODO and note it.
+
+**Configuration-management stacks — map to roles, and do NOT leave §8 empty.** `$TF_MODULE_LIB` may
+well be set in the environment and point at an unrelated Terraform library; ignore it. There is no
+role library, so §8 is where the role decomposition is *designed*: one row per role with its
+concern, the host groups it targets, its public variable interface (`defaults/`), and the pinned
+collections it needs. That table is the main output of G1 for this stack — leaving it as a TODO
+throws away the design and leaves G3b with nothing to build from.
 
 ## Phase 4: Write the spec
+
+> **§8.1 is the section `/ansible-implement` (G3b) reads as its source** — omitting it means the
+> configure track starts from nothing. Include it whenever the stack has hosts; delete it for a
+> serverless/managed stack. This skill has no `Bash`, so it cannot resolve and read the guideline
+> repo's copy of the template — the inline copy below is therefore load-bearing, and the §1.5 doctor
+> mechanically diffs the two heading lists so this pair cannot drift again unnoticed.
 
 Write `docs/specs/<spec-name>.spec.md` using the template below (kept in sync with
 `knowledge/templates/infra-spec-template.md`). Fill every section from the discovery answers. In
@@ -134,6 +172,10 @@ values.
 ## 8. Reusable modules (map to MODULES.md)
 | Spec component | Module in custom-infrastructure | New module needed? |
 
+## 8.1 Deferred to configuration management (Ansible — omit if the stack has no hosts)
+| In-guest concern | Handled by | Values needed from Terraform |
+- **Not automatable** (stays a human runbook step): <…>
+
 ## 9. Decisions needing the human (open at G1)
 > Recommendation = Claude proposes the best technical option + reason; you confirm/change.
 > Need from you = a missing business fact only you know (never fabricated).
@@ -142,6 +184,15 @@ values.
 
 ## 10. Rollback
 - Strategy · Quick rollback steps
+
+## 11. Acceptance criteria (how the human verifies — filled at G1, checked at G4/G5)
+> One row per claim the design makes. Each must be **observable**: a command to run and what its
+> output must show. "The report says it passed" is not acceptance — the requirement that a gate be
+> checked against real machine state, not against its own summary, lives or dies here.
+
+| # | What will be checked | How (exact command / observation) | Satisfies |
+|---|---|---|---|
+| A-1 | <the claim> | <command + expected output> | <req id> |
 ```
 
 </details>
