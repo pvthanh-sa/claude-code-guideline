@@ -60,6 +60,31 @@ If `ansible-lint` is available, you may run it read-only for corroboration:
 - [ ] Variable precedence is unambiguous — the same name is not set at several levels by accident
 - [ ] Jinja2 in templates is readable; no deeply nested logic that belongs in a task
 - [ ] Multi-OS handled via facts, not hostnames; RedHat-family path is correct (`dnf`, `firewalld`, SELinux)
+- [ ] A second OS family is a **port, not a path substitution** — the equivalent tools often report
+      differently (exit code vs stdout) and may have side effects the RedHat one lacks. Both branches
+      must normalise into the same named facts
+
+### 7. Checks that could report a pass they have not earned
+The category that static tools cannot cover. Ask of every verification, assertion and report row:
+- [ ] Is the answer read from the **daemon or kernel** (`sshd -T`, `firewall-cmd`, `getenforce`,
+      `aa-status`) rather than from the file the run just wrote?
+- [ ] Where a status is `SKIPPED`: **could this host have answered, and did we ask the right way?**
+      A well-behaved SKIPPED is the hardest coverage gap to notice, because everything about it looks
+      like the system working. Verified case: the role installed the correct package for the OS and
+      then looked for the other family's binary
+- [ ] Is the check named after the **requirement** or after one **mechanism**? A row called
+      `selinux_*` reports FAIL on a correct Ubuntu host; `mac_*` does not
+- [ ] Is `SKIPPED` distinguishable from "cannot happen here"? Merging them fills the coverage-gap
+      column with permanent noise until nobody reads it
+- [ ] **Is this parse implemented anywhere else in the repo?** The same tool output parsed in two
+      roles means fixing one leaves the other wrong — and the second copy is invisible to the test
+      that caught the first
+- [ ] Does any `regex_replace` use a backreference (`\1`)? It crosses YAML → Jinja → `re.sub`; when
+      one layer eats a backslash the filter publishes the literal `\1` as data, with no error
+- [ ] Does a registered `rc` verdict test `is skipped` **first**? A `command` skipped by check mode
+      registers `rc: 0`
+- [ ] Has the report ever been seen to go **red**? A gate only ever observed passing is untested
+      instrumentation — drift a host on purpose and confirm the right row fails
 
 ## Output Format
 
@@ -70,7 +95,7 @@ If `ansible-lint` is available, you may run it read-only for corroboration:
 
 #### [FINDING-001] [Critical|High|Medium|Low] <short title>
 - **File:** `path/to/file.yml:42`
-- **Category:** Idempotency | Secrets | Privilege | Permissions | Targeting | Structure
+- **Category:** Idempotency | Secrets | Privilege | Permissions | Targeting | Structure | Unearned-pass
 - **What:** <the defect, stated plainly>
 - **Why it matters:** <concrete consequence — what breaks, leaks, or drifts>
 - **Fix:**
@@ -81,7 +106,8 @@ If `ansible-lint` is available, you may run it read-only for corroboration:
 ### Summary
 - Critical: X · High: Y · Medium: Z · Low: W
 - Files reviewed: N
-- Deterministic gates: <which ran / which were skipped because the tool is not installed>
+- Deterministic gates: <which ran and their result. A gate is expected to have RUN — the toolchain
+  is installed on demand, so "not installed" is a defect to report, not an excuse>
 
 ### Positive Observations
 - <what is already done well — keep it short and specific>
