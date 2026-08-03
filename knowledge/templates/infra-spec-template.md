@@ -93,3 +93,12 @@
 ## 10. Rollback
 - **Strategy:** CodeDeploy blue-green / reverse `terraform plan` / state restore
 - **Quick rollback steps:** <describe>
+
+## 11. Acceptance criteria (how the human verifies — filled at G1, checked at G4/G5)
+> One row per claim the design makes. Each must be **observable**: a command to run and what its
+> output must show. "The report says it passed" is not acceptance — the requirement that a gate be
+> checked against real machine state, not against its own summary, lives or dies here.
+
+| # | What will be checked | How (exact command / observation) | Satisfies |
+|---|---|---|---|
+| A-1 | <the claim> | <command + expected output> | <req id> |

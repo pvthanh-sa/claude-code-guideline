@@ -10,10 +10,32 @@
 # Ansible — commit only the .example files; filled vars/vault/inventory carry
 # real output values + secrets (PSKs, access keys)
 ansible/group_vars/all.yml
-ansible/group_vars/vault.yml
-ansible/group_vars/*/vault
 ansible/inventory.ini
 *.retry
+
+# EVERY vault spelling, in group_vars AND host_vars. Ansible loads `vault`, `vault.yml` and
+# `vault.yaml` identically, and `.yml` is what a second engineer will actually write. A rule
+# naming only the one spelling this project happens to use is a rule that protects one file
+# and not the pattern -- and the gap is invisible, because an UNENCRYPTED vault.yml holding a
+# sha512crypt hash trips no gitleaks rule either. Both layers miss it at once.
+# Verified with `git check-ignore -v` on a real project (2026-08-01).
+ansible/group_vars/**/vault
+ansible/group_vars/**/vault.yml
+ansible/group_vars/**/vault.yaml
+ansible/host_vars/**/vault
+ansible/host_vars/**/vault.yml
+ansible/host_vars/**/vault.yaml
+# ...but keep the committed twins that document the shape.
+!ansible/**/vault.example
+!ansible/**/vault.yml.example
+
+# Any second inventory. `inventory.ini` alone leaves inventory-prod.ini, inventory-dr.ini,
+# and inventories/<env>/hosts tracked -- all of which carry the same real addresses.
+ansible/inventory*.ini
+!ansible/inventory.ini.example
+ansible/inventories/**/hosts
+ansible/known_hosts
+!ansible/known_hosts.example
 
 # Vault password — must never be committed (chmod 600; a password *script* is chmod 700)
 .vault_pass

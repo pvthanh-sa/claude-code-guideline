@@ -8,16 +8,17 @@
 # between two runs of the same playbook -- the opposite of what configuration
 # management is for.
 #
-# CONTROL-NODE FLOOR: ansible-core >= 2.17 is a HOUSE choice. Every range pinned below declares
-# only `requires_ansible: >=2.15.0` -- amazon.aws first requires 2.17 at 10.0.0, which the <10
-# ceiling excludes. Keep the floor identical locally AND in CI anyway: if CI resolves a newer
-# core it passes, and the same playbook then fails on a laptop pinned lower.
+# CONTROL-NODE FLOOR: ansible-core >= 2.17, and it is a real requirement, not a preference:
+# amazon.aws >=11.0.0 and community.docker >=5.0.0 both declare `requires_ansible: >=2.17.0`.
+# (9.x and 4.x only needed 2.15 -- if you ever lower these floors, re-check the core floor too.)
+# Keep the same numbers in the CI workflow and in bootstrap-ansible.sh: whichever of the three
+# resolves a different major first is where "green pipeline, red laptop" comes from.
 ---
 collections:
   # AWS modules + the aws_ec2 dynamic inventory plugin + the aws_ssm connection plugin.
   # Needs boto3/botocore on the control node.
   - name: amazon.aws
-    version: '>=9.0.0,<10.0.0'
+    version: '>=11.0.0,<12.0.0'
 
   # Broad grab-bag: pids, timezone, ini_file, pam_limits, and sefcontext (the persistent
   # SELinux labeling module -- file's setype: alone does not survive a relabel).
@@ -31,7 +32,7 @@ collections:
 
   # Container management + the docker connection driver used by molecule.
   - name: community.docker
-    version: '>=4.0.0,<5.0.0'
+    version: '>=5.0.0,<6.0.0'
 
   # Uncomment when the project actually needs them -- do not install speculatively.
   # - name: community.postgresql
