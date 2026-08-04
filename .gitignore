@@ -1,2 +1,4 @@
 # All code-workspace files
 *.code-workspace
+# Working notes, deleted once the work is done — never committed.
+TODO-*.md

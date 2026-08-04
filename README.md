@@ -80,11 +80,6 @@ gate at every step** — Claude never auto-advances and never runs `terraform ap
 Quick reference map: [`knowledge/devops-workflow.md`](knowledge/devops-workflow.md).
 Install the pipeline skills once per machine: see [`knowledge/setup-new-project.md`](knowledge/setup-new-project.md) §1.
 
-**Before starting an Ansible project**, read
-[`knowledge/ansible-track-readiness.md`](knowledge/ansible-track-readiness.md) — what the Ansible
-track has actually been proven to do on real hosts, what nobody has tried yet, and the per-machine
-vs per-project setup split (per-project files are **copies**, so they go stale).
-
 ---
 
 ## 🚀 How to Use
