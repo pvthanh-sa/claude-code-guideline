@@ -11,8 +11,26 @@ can I rely on and what am I the first to try?**
 
 ## 1. Starting a new project — what you actually re-run
 
-The setup splits in two, and the split is not obvious. Getting it wrong is the difference between
-"the pipeline is stale" and "the pipeline is missing".
+The setup splits in two, and the split is **not two halves of one list — it is two different
+layers**. A reader of an earlier draft of this file came away thinking "symlink the pipeline skills"
+meant only `/ansible-implement`, with everything else copied. It does not:
+
+| | Symlinked into `~/.claude/` | Copied into `<project>/.claude/` |
+|---|---|---|
+| **What it is** | The 7 **pipeline commands** you type | The **domain knowledge those commands read** |
+| **Contents** | `spec-architect` `init-project` `iac-implement` `ansible-implement` `infra-review` `infra-document` `secret-scan`, the `infra-review.js` workflow, and 5 reviewer agents | `skills/{ansible-engineer, devops-engineer, secure-code-guardian}`, `rules/{ansible,security,cicd}.md`, 2 reviewer agents |
+| **When** | Once per machine (§1.1) | Once per project, by `/init-project` at G2 |
+| **Stays current?** | **Yes** — they point into the repo working tree | **No** — a snapshot taken at G2 |
+
+`/ansible-implement` is one of the seven symlinked *commands*. `ansible-engineer` — the skill that
+actually holds `verify.sh`, `patterns.md` and `verify-chain.md` — is a *copy*, and it is the one
+that goes stale.
+
+The reviewer agents deliberately appear in **both**: symlinked so `/infra-review` works in a project
+where init was never run, copied so the project is self-contained for a teammate with no guideline
+clone.
+
+Getting this wrong is the difference between "the pipeline is stale" and "the pipeline is missing".
 
 ### Once per MACHINE — §1.1 of `pipeline-usage-guide.md`
 
