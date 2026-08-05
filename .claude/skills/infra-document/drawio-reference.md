@@ -1,4 +1,4 @@
-# draw.io authoring reference (AWS4 stencils)
+# draw.io authoring reference (AWS4 stencils, and the built-in set for everything else)
 
 Use this to hand-author a **valid, good-looking** `.drawio` file with proper AWS grouping. These
 exact style strings are proven to open cleanly in draw.io / the VS Code Draw.io extension. Copy the
@@ -90,6 +90,75 @@ sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1
   **Rule: a missing icon is drawn as a labeled placeholder box, not skipped.** Dropping, merging, or
   "drawing around" a real resource to avoid a missing icon makes the diagram wrong — the dashed box +
   label is self-evident at review, so the operator swaps in the right icon (no need to enumerate them).
+
+## Non-AWS stacks — use the BUILT-IN stencils, do not draw plain boxes
+
+A stack with no AWS services still gets icons. draw.io ships several non-AWS shape libraries and the
+CLI exporter renders them with **no download, no network, no licensing question**. Reaching for
+plain labelled rectangles because "there is no AWS here" produces a wall of text that nobody reads —
+and it is not necessary.
+
+**Verified on the shipped draw.io CLI** (2026-08-05). These render:
+
+| Shape | `shape=` value | Use for |
+|---|---|---|
+| stacked server | `mxgraph.networks.server` | a managed host / VM |
+| laptop | `mxgraph.networks.laptop` | the control node, an operator workstation |
+| monitor + keyboard | `mxgraph.networks.terminal` | a console, an interactive session |
+| brick wall + flame | `mxgraph.networks.firewall` | host firewall, security boundary |
+| padlock | `mxgraph.networks.secured` | a secret, a vault, an encrypted file |
+| cloud | `mxgraph.networks.cloud` | the internet, an external service |
+| document | `mxgraph.azure.file` | a config file, a rendered report |
+| VM tile | `mxgraph.azure.virtual_machine` | a VM where a flat tile reads better than a tower |
+| stacked disks | `mxgraph.gcp2.repository` | a git repo, an artifact store |
+| cylinder | `mxgraph.cisco.routers.router` | a router / network device |
+| tower PC | `mxgraph.cisco.computers_and_peripherals.pc` | a workstation, when `laptop` is wrong |
+| shield-ish block | `mxgraph.cisco.security.firewall` | an alternative firewall glyph |
+
+**These silently render as a plain rectangle** — the library is not bundled. Do not use them:
+`mxgraph.rack.*` · `mxgraph.veeam.*` · `mxgraph.networks.rack_server` ·
+`mxgraph.networks.certificate` · `mxgraph.networks.firewall_2` · `mxgraph.azure.gear` ·
+`mxgraph.azure.shield` · `mxgraph.azure.checkmark`
+
+### Verify a shape before you commit to it
+
+An unbundled shape does not error — it draws an empty box with your label inside, which looks
+*almost* right and ships. Test first, in one file, and look at the PNG:
+
+```bash
+cat > /tmp/shapetest.drawio <<'EOF'
+<mxfile><diagram name="t"><mxGraphModel dx="800" dy="600" pageWidth="600" pageHeight="160"><root>
+<mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="s1" value="candidate" style="shape=mxgraph.networks.server;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+  <mxGeometry x="40" y="30" width="60" height="60" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>
+EOF
+"$SK/export-diagram.sh" /tmp/shapetest.drawio /tmp/shapetest.png
+# then LOOK at it — a bare rectangle means the library is absent, pick another shape
+```
+
+### Icon or box — pick per node, not per diagram
+
+Use an **icon** for anything with a physical or conceptual counterpart the reader already pictures:
+a host, a laptop, a firewall, a lock, a file, a repo.
+
+Keep a **plain box** for anything that is a *declaration or a statement*: variable scope, an
+inventory group, a caveat, a numbered-path key, the legend. Those are text by nature, and an icon
+on them is decoration that costs vertical space.
+
+A useful ratio: icons on the nouns the reader can point at, boxes on the rules they have to read.
+
+### Label placement with icons
+
+An icon is square-ish and small; its label does not fit inside. Always:
+
+```
+verticalLabelPosition=bottom;verticalAlign=top;    # label under the icon
+labelBackgroundColor=#FFFFFF;                      # keeps it readable over an edge
+```
+
+Without those two, the label is drawn *inside* the glyph and becomes unreadable — a mistake that
+survives review because at 100% zoom it still looks like an icon with a caption.
 
 ## Gotchas (silent-rendering mistakes)
 - **Unknown stencil = blank glyph, no error.** Verified empirically: an invalid `resIcon` renders

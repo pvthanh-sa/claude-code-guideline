@@ -1,6 +1,6 @@
 ---
 name: infra-document
-description: 'Stage 5 of the DevOps pipeline. Generate a living infrastructure document for an environment — derives the architecture from the actual Terraform module wiring + spec, writes docs/infrastructure.md, one or more editable docs/diagrams/infra*.drawio (AWS-grouped; splits a dense stack into focused per-plane views when a single diagram would overlap) gated by a shipped stencil/geometry validator, auto-exports each to PNG (drawio CLI) and vision-checks the render(s) (Mermaid mirror only as fallback when export is impossible), plus a top-level README.md entry point. STOPS at human gate G5; never commits.'
+description: 'Stage 5 of the DevOps pipeline. Generate a living infrastructure document for an environment — derives the architecture from the actual Terraform module wiring + spec, writes docs/infrastructure.md, one or more editable docs/diagrams/infra*.drawio (AWS-grouped, or built-in stencils for a non-AWS stack; splits a dense stack into focused per-plane views when a single diagram would overlap) gated by a shipped stencil/geometry validator, auto-exports each to PNG (drawio CLI) and vision-checks the render(s) (Mermaid mirror only as fallback when export is impossible), plus a top-level README.md entry point. STOPS at human gate G5; never commits.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Write, Edit
 argument-hint: '[env-dir]'
@@ -120,6 +120,17 @@ reader should finish §1–§3 with a correct mental model, then use §4–§8 a
 ## Phase 3: Write the diagram(s) — decide one vs several by readability
 
 Create `docs/diagrams/` if needed. `Read` `$REF` (resolved + existence-checked in Phase 2).
+
+> **A stack with no AWS services still gets ICONS.** `$REF` has a *"Non-AWS stacks"* section with a
+> verified table of built-in stencils — host, laptop, terminal, firewall, padlock, cloud, file, repo,
+> router — that the shipped draw.io CLI renders with **no download and no network**. Read it before
+> deciding anything, because the tempting fallback ("no AWS here, so every node is a labelled box")
+> produces a wall of text nobody reads, and it is not necessary. Icons on the nouns a reader can
+> point at; plain boxes only for declarations, rules and the legend.
+>
+> An unbundled stencil does **not** error — it silently draws an empty rectangle with your label
+> inside, which looks almost right and ships. `$REF` lists the ones that do not render, and gives a
+> one-file test to check a candidate before you commit to it.
 
 **Decide first — and reason about it per project: one combined diagram, or several?** The default is
 **one** `infra.drawio`, and for a small/simple stack that's the right answer. But a single diagram that
