@@ -71,6 +71,17 @@ their own rules.
   — `ssh_args` is connection-*plugin* config and does **not** appear in the first, so a repo can
   print `HOST_KEY_CHECKING = True` while `ssh_args = -o StrictHostKeyChecking=no` turns verification
   off entirely (verified on 2.21)
+- **`host_key_checking = True` only enforces the trust you already established — say where it came
+  from.** A repo that keeps the setting on and then populates `known_hosts` with bare `ssh-keyscan`
+  (or `StrictHostKeyChecking=accept-new`) is trusting whatever answered on port 22, then faithfully
+  detecting changes to it. That still catches a *later* substitution, so it is not worthless — what
+  it never verified is the key trusted on the **first** connection, which is the moment an
+  interceptor would choose. Record where the authoritative fingerprint comes from, over a channel
+  independent of SSH — a platform that serves the first-boot log through its control-plane API makes
+  this a scripted check authenticated by that platform's own IAM; a platform offering only an
+  interactive serial/VNC console makes it a human comparing two strings, which is why it gets
+  skipped. Prefer the API form when it exists, and when it does not, write the skip down as a known
+  gap rather than letting the `True` imply a guarantee nobody delivered
 
 ## Targeting Safety — treat every inventory host as production
 - Never `hosts: all`, and never `ansible <pattern> -m <module>` ad-hoc against the fleet
