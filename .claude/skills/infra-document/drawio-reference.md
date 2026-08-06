@@ -203,12 +203,22 @@ survives review because at 100% zoom it still looks like an icon with a caption.
   parent container, so compare in absolute terms:
 
   ```python
-  # abs rect of a child = parent origin + child x/y. Then: is any waypoint inside any box?
-  hits = [n for n, (bx, by, bw, bh) in boxes.items() if bx <= x <= bx+bw and by <= y <= by+bh]
+  # abs rect of a child = parent origin + child x/y. Then: is any waypoint inside any LEAF box?
+  hits = [n for n, (bx, by, bw, bh) in leaves.items() if bx <= x <= bx+bw and by <= y <= by+bh]
   ```
 
+  **Test leaves, not containers.** An edge between two children of the same group passes through
+  that group's rect by definition, so including containers buries the real hits in false ones — the
+  first run of this check reported four, all legitimate. Build the leaf set as *every vertex that is
+  not itself a `parent` of something*.
+
   Reroute into the corridor between one row's tallest bottom and the next row's top, and keep that
-  corridor free — it is where every long horizontal edge wants to live.
+  corridor free — it is where every long horizontal edge wants to live. Widen it to ~30px before
+  routing through: a 10px corridor renders as a line grazing two borders.
+- **A box that grew past an edge was usually already grazing it.** The crossing that appears after a
+  resize is rarely new — the edge was running a few pixels outside the old border, which no check
+  and no reviewer flags. So when a resize exposes one, fix the **route**, not just the overlap:
+  move the box *and* give the edge a corridor, or the next size change brings it straight back.
 
 ## Edges (connections)
 ```
