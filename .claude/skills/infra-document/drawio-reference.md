@@ -18,6 +18,23 @@ patterns; only change `id`, `value`, `parent`, and `mxGeometry`.
    catalog entry, draw it as the **labeled fallback box** (§Special shapes) — **never omit or simplify
    the component to avoid a missing icon**; the validator always allows the box, and the operator swaps
    in the right icon later.
+8. **Where this project departs from a house default, draw the default too.** A box that records only
+   the choice made cannot be read by anyone who does not already know the rule it is an exception to —
+   `no AWS identity here` is a non-sequitur on a project with no AWS in it. Naming the deviation
+   (`Vault, NOT the house Secrets-Manager default`) reads as an apology and still teaches nothing.
+   Draw the **preference order**, then mark the position:
+
+   ```
+   Secrets — in order of preference
+   1  Cloud secrets service (SSM / Secrets Manager) — the default
+   2  Ansible Vault (vars/vault split) — only where there is no cloud identity
+   HERE: 2.  group_vars/all/vault + .vault_pass 0600, both gitignored
+   ```
+
+   The reader learns what to reach for first **and** why this one could not, which is what makes the
+   diagram worth reading on the next project. Same shape for any constrained choice — a manual step
+   that has an automatable form elsewhere, a fallback stencil, a pinned-by-tag action in a lab. State
+   the standard; mark where you are.
 
 ## Group containers
 Same style string for every group — only `grIcon`, colors, and `value` change. Keep the long
@@ -178,6 +195,20 @@ survives review because at 100% zoom it still looks like an icon with a caption.
 - **Edges that exit an icon's bottom-center slice through its own label** (labels render below the
   icon). Exit from a side (`exitX=0/1`) or a corner and route around; watch label collisions in
   shared corridors — give long dashed edges explicit waypoints + a label offset.
+- **Growing a box moves it onto other people's edges, and nothing warns you.** An `<mxPoint>`
+  waypoint is an absolute canvas coordinate that does not follow the boxes it was drawn to avoid, so
+  a resize + restack silently routes a line through a box — and an edge *label* parked there lands
+  on top of the text (`INSIDE ansil⑥/`). Only the rendered PNG shows it. After any geometry change,
+  test every waypoint against every box rect before exporting; child coordinates are relative to the
+  parent container, so compare in absolute terms:
+
+  ```python
+  # abs rect of a child = parent origin + child x/y. Then: is any waypoint inside any box?
+  hits = [n for n, (bx, by, bw, bh) in boxes.items() if bx <= x <= bx+bw and by <= y <= by+bh]
+  ```
+
+  Reroute into the corridor between one row's tallest bottom and the next row's top, and keep that
+  corridor free — it is where every long horizontal edge wants to live.
 
 ## Edges (connections)
 ```
