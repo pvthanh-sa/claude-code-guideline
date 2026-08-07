@@ -1,12 +1,40 @@
 # Secret-scan config — shared by Betterleaks (preferred) and Gitleaks (fallback).
 # Betterleaks is a drop-in for Gitleaks: it reads this same .gitleaks.toml.
 # Copy this file to your repo root as `.gitleaks.toml`.
+#
+# KNOWN BLIND SPOTS — measured, and not fixable from this file:
+#   * The built-in `generic-api-key` rule carries its own stopword list and DROPS any secret
+#     containing `example`, `dummy`, `change…`, `placeholder`, whatever its entropy. A real
+#     token named `dummy-prod-9f3ac1…` passes the gate silently.
+#   * `postgres://user:pass@host/db` is not detected. `mongodb+srv://` is (there is a rule for
+#     it); Postgres and most other drivers have none, and the password sits inside a URL rather
+#     than beside an assignment keyword, so `generic-api-key` never sees it.
+# Neither is a reason to skip the gate; both are reasons not to read a green run as "no secrets".
+#
+# `git` mode reads commit history, `dir` mode reads the working tree. A secret committed and
+# then deleted is invisible to `dir` and caught by `git` — CI must run `git`.
+#
+# Exit code 1 means "leaks found" AND "config failed to load". A gate that treats non-zero as
+# a leak reports a phantom finding on a broken config; check the report, not just the code.
 
 title = "secret-scan (betterleaks/gitleaks)"
 
 [extend]
 # Start from the tool's built-in ruleset, then narrow with the allowlist below.
 useDefault = true
+
+# The built-in ruleset has a rule for mongodb+srv:// and none for any other driver, so a
+# password inside a postgres://, mysql:// or redis:// URI is invisible to it: it sits in a
+# URI rather than beside an assignment keyword, which is all generic-api-key looks for.
+[[rules]]
+id = "db-uri-inline-password"
+description = "Database URI with an inline password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|redis(?:s)?|amqps?|mongodb)://[^\s:@/]*:([^\s:@/]{8,})@'''
+secretGroup = 1
+# 3.0 keeps documentation out of the report: `password`, `changeme` and `secret` all fall
+# below it, while a generated credential does not.
+entropy = 3.0
+keywords = ["postgres", "postgresql", "mysql", "mariadb", "redis", "amqp", "mongodb"]
 
 [allowlist]
 description = "Repo-wide allowlist to cut false positives"
@@ -22,7 +50,9 @@ paths = [
 # Placeholder tokens used in this toolkit's templates — not real secrets.
 regexes = [
   '''<your-[a-z0-9-]+>''',
-  '''EXAMPLE|CHANGEME|REPLACE_ME|dummy|placeholder''',
+  # No word-list entry for EXAMPLE / CHANGEME / dummy / placeholder: the built-in
+  # generic-api-key rule already drops those, and an unanchored alternation here would
+  # also allowlist a real secret that merely contains one. Anchor if one is ever needed.
   # Ansible Vault ciphertext. A vaulted file is a header plus pages of high-entropy hex, so
   # entropy rules fire on every single one. The content is ALREADY encrypted — that is the
   # point of committing it — so a hit here is noise, not a leak.
