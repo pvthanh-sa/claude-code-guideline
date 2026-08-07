@@ -11,13 +11,32 @@ flow is skipped — the standard production "local gate + CI gate" pattern (mirr
 | Format | `terraform fmt -check` | ✅ blocks |
 | Syntax/validity | `terraform validate` (per dir, `-backend=false`) | ✅ blocks |
 | Lint | `tflint --minimum-failure-severity=error` | ✅ errors block (warnings print, don't block) |
-| Misconfig #1 | **Checkov** (1000+ policy-as-code rules) | report-only → Security tab |
+| Misconfig #1 | **Checkov** (1000+ policy-as-code rules) | report-only → run summary (+ Security tab on public repos) |
 | Misconfig #2 | **Trivy config** (tfsec successor) | ✅ **blocks on HIGH/CRITICAL** |
 
 Two misconfig scanners on purpose: Checkov and Trivy have different rulesets and catch different
 issues. Checkov runs in **report mode** (Checkov CE has no severity threshold, so hard-failing on
-every rule is too noisy); Trivy is the **hard gate** because it supports `--severity`. Both upload
-SARIF, so all findings — including Checkov's — appear in the repo **Security tab**.
+every rule is too noisy); Trivy is the **hard gate** because it supports `--severity`.
+
+### Where findings show up — depends on repo visibility
+
+Code scanning (the Security tab) requires **GitHub Code Security / Advanced Security on private and
+internal repos**. The workflow therefore gates the two SARIF uploads on
+`!github.event.repository.private`:
+
+| Repo | SARIF upload | Where you read findings |
+|------|--------------|--------------------------|
+| Public | runs | Security tab **+** run summary |
+| Private/internal, no Code Security | **skipped** (clean grey, no error) | **Run summary** (Checkov counts + full report in a `<details>`), job log, and Trivy failing the job |
+
+The skip is deliberate rather than `continue-on-error`: a step that fails or warns on *every* run
+trains people to ignore the colour, and would also mask a genuine upload failure once the repo is
+public. Nothing re-enables by hand — make the repo public or turn on Code Security and the uploads
+resume on the next run.
+
+Because Checkov is report-only, it needs a destination people actually see. Step **4b** writes its
+pass/fail counts and check list to `$GITHUB_STEP_SUMMARY`, which renders on the workflow-run page —
+so a rising failed-check count is noticeable even with no Security tab.
 
 ## Install
 
@@ -45,7 +64,23 @@ docker run --rm -v "$PWD":/repo bridgecrew/checkov:latest -d /repo --framework t
   to silence accepted findings.
 - **Adjust Trivy severity:** edit `severity: CRITICAL,HIGH` (e.g. add `MEDIUM`) or add a `.trivyignore`.
 - **Severity policy (production norm):** Critical → block; High → block or manual-approve; Medium/Low → log.
-- **Branch protection:** mark the `iac-scan` check **Required** in repo settings so PRs can't merge red.
+- **Branch protection:** mark the `iac-scan` check **Required** so PRs can't merge red — but **delete
+  both `paths:` blocks first**. A workflow skipped by a path filter reports *no* status, GitHub cannot
+  distinguish "skipped" from "not started", and a PR touching no `.tf` files then blocks forever with
+  nothing to fix. Before removing them, confirm fmt/tflint/checkov/trivy all exit 0 on a repo with zero
+  `.tf` files.
+- **A check must have run once before it can be marked Required** — GitHub's picker only lists checks
+  it has seen. Open one PR that exercises the workflow, then set branch protection.
+
+## Gotchas
+
+- **The first push to an empty repo does not trigger this workflow.** Path filters are evaluated
+  against a two-dot diff, and the initial commit has no parent to diff against, so nothing matches
+  and the run is skipped. GitHub documents "always run" fallbacks only for >1,000 commits and diff
+  timeouts — *no diff base* is not one of them. `secret-scan.yml` still runs (it has no filters). To
+  exercise this gate on a fresh repo, push a second commit that touches a `.tf` file, or open a PR.
+- **`paths` on `pull_request` uses a three-dot diff** (merge-base…head) while `push` uses two-dot.
+  Testing one does not prove the other; the PR path is the one that actually guards merges.
 
 ## Complements (not replaced by) this gate
 

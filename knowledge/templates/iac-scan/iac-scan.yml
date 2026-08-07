@@ -15,12 +15,17 @@ on:
   pull_request:
     paths: ['**/*.tf', '**/*.tfvars', '**/*.hcl', '.github/workflows/iac-scan.yml']
   push:
-    branches: [main]
+    branches: [main, master]   # both: a repo created before GitHub's default flipped still uses master
     paths: ['**/*.tf', '**/*.tfvars', '**/*.hcl']
 
 permissions:
   contents: read
   security-events: write   # required to upload SARIF to the Security tab
+  actions: read            # upload-sarif calls get-a-workflow-run, which needs this in PRIVATE
+                           # repos ("only required for workflows in private repositories" — GitHub
+                           # docs). Declaring a permissions block sets every UNDECLARED scope to
+                           # none, so omitting it fails the step with the misleading
+                           # "Resource not accessible by integration" rather than a permission name.
 
 concurrency:                 # CI is safe to cancel when new commits arrive
   group: iac-scan-${{ github.ref }}
@@ -70,13 +75,41 @@ jobs:
 
       # 4) Misconfig scanner #1 — Checkov (policy-as-code, 1000+ rules).
       #    Runs in REPORT mode (Checkov CE has no severity threshold, so blocking on every rule
-      #    is too noisy). All findings still go to the Security tab. To make it blocking, drop
-      #    --soft-fail (and curate a .checkov.yaml skip-list).
+      #    is too noisy). To make it blocking, drop --soft-fail (and curate a .checkov.yaml
+      #    skip-list).
       - name: Checkov
         run: |
+          set -o pipefail
           pip install --quiet checkov
           checkov -d . --framework terraform --quiet --compact \
-            -o cli -o sarif --output-file-path console,checkov.sarif --soft-fail
+            -o cli -o sarif --output-file-path console,checkov.sarif --soft-fail \
+            | tee checkov-cli.txt
+
+      # 4b) Surface Checkov on the run page. A report-only scanner needs somewhere people actually
+      #     look: on a PRIVATE repo the Security tab is unavailable (step 6), so without this the
+      #     findings live only in a collapsed job log and nobody ever reads them. The step summary
+      #     renders on the run itself, so a rising failed-check count is visible at a glance.
+      - name: Checkov summary
+        if: always()
+        run: |
+          {
+            echo '### Checkov (report-only — does not block)'
+            echo
+            if [ -s checkov-cli.txt ]; then
+              echo '```'
+              grep -E '^(Passed checks|Failed checks|Skipped checks|Check: )' checkov-cli.txt | head -60 || true
+              echo '```'
+              echo
+              echo "<details><summary>Full Checkov output</summary>"
+              echo
+              echo '```'
+              tail -c 60000 checkov-cli.txt
+              echo '```'
+              echo '</details>'
+            else
+              echo '_No Checkov output captured._'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # 5) Misconfig scanner #2 — Trivy config (tfsec successor). THIS is the blocking gate:
       #    fails the run on HIGH/CRITICAL misconfig. Different ruleset than Checkov → wider coverage.
@@ -94,14 +127,21 @@ jobs:
           exit-code: '1'                      # (.trivyignore at repo root is read automatically)
 
       # 6) Publish both reports to the Security tab (even when a scan failed).
+      #    Gated on repo visibility: code scanning on a PRIVATE repo requires GitHub Code Security /
+      #    Advanced Security, so on a private repo without it the upload can only fail. A step that
+      #    fails on every single run is worse than no step — people stop reading the colour, and the
+      #    one run that fails for a real reason goes unnoticed. Skipping states the precondition in
+      #    code and needs no edit later: make the repo public, or enable Code Security, and these
+      #    resume on the next run. Findings are not lost meanwhile — Checkov is in the step summary
+      #    (4b) and Trivy still fails the job on HIGH/CRITICAL.
       - name: Upload Checkov SARIF
-        if: always()
+        if: always() && !github.event.repository.private
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: checkov.sarif
           category: checkov
       - name: Upload Trivy SARIF
-        if: always()
+        if: always() && !github.event.repository.private
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy.sarif

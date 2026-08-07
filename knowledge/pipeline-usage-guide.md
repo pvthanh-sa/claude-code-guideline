@@ -646,7 +646,17 @@ directory per convention, and stop at `terraform plan` for you to review.
    ```
 6. **Installs the CI security gate** — `.github/workflows/iac-scan.yml` (idempotent, drift-aware).
    It re-runs fmt/validate/tflint/Checkov/Trivy on **every PR** touching `.tf` (defense-in-depth:
-   local gate + server-side gate). Mark its `iac-scan` check **Required** in branch protection.
+   local gate + server-side gate).
+   - Making its check **Required** in branch protection needs two things first, in this order:
+     **(a)** delete the workflow's two `paths:` blocks — a path-filtered workflow reports *no* status
+     when skipped, GitHub cannot tell that apart from "not started", and a PR touching no `.tf`
+     blocks forever; **(b)** open one PR so the check runs at least once, since GitHub's Required-check
+     picker only lists checks it has already seen.
+   - On a **private repo without GitHub Code Security**, the two SARIF uploads skip by design and
+     Checkov's findings are read from the **run summary** instead of the Security tab. See
+     [`templates/iac-scan/README.md`](templates/iac-scan/README.md).
+   - The **first push to an empty repo does not trigger it** (no parent commit ⇒ no diff ⇒ the path
+     filter matches nothing). Push a follow-up commit touching a `.tf`, or open a PR.
 
 > 🛠️ **Run any scan by hand?** All the CLI commands (IaC + secrets, binary + Docker, tuning) are in
 > [`security-scans-cli.md`](security-scans-cli.md).
