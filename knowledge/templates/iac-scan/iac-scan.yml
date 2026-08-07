@@ -5,6 +5,12 @@
 # Findings surface in PR checks and the repo Security tab (SARIF).
 name: IaC Scan
 
+# Making this job a REQUIRED status check means deleting the two `paths:` blocks below
+# first: a workflow skipped by a paths filter reports no status, GitHub cannot tell
+# "skipped" from "not started", and the PR blocks forever with nothing to fix. The filter
+# is evaluated against the PR's whole base...head diff, so a PR that adds a file and
+# removes it again locks itself out. Before removing them, confirm fmt/tflint/checkov/
+# trivy all exit 0 on a repo with zero .tf files — only `terraform validate` guards that.
 on:
   pull_request:
     paths: ['**/*.tf', '**/*.tfvars', '**/*.hcl', '.github/workflows/iac-scan.yml']

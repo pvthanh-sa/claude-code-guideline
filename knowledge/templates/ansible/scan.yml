@@ -12,27 +12,16 @@
 ---
 name: Ansible Scan
 
+# No `paths:` filter -- this job is meant to be a REQUIRED status check. A workflow
+# skipped by a paths filter reports no status at all, and GitHub cannot tell "skipped"
+# from "not started", so the PR blocks on `Expected - Waiting for status to be
+# reported` with nothing to fix. The filter is evaluated against the PR's whole
+# base...head diff, so a PR that adds a file and removes it again locks itself out.
+# Reinstating filters here means dropping this job from Required checks in the same change.
 'on':
   pull_request:
-    paths:
-      - 'ansible/**'
-      - 'roles/**'
-      - 'playbooks/**'
-      - 'group_vars/**'
-      - 'host_vars/**'
-      - 'ansible/requirements.yml'
-      - '.ansible-lint'
-      - '.yamllint'
-      - '.github/workflows/ansible-scan.yml'
   push:
     branches: [main, master]
-    paths:
-      - 'ansible/**'
-      - 'roles/**'
-      - 'playbooks/**'
-      - 'group_vars/**'
-      - 'host_vars/**'
-      - 'ansible/requirements.yml'
 
 permissions:
   contents: read
