@@ -178,6 +178,15 @@ their own rules.
   `not ansible_check_mode` instead produces an approval preview that verifies nothing, which is the
   failure this whole ladder exists to prevent. Keep the `is skipped` test in `that:` as well: it
   costs nothing and it is what catches a probe that could not run for some other reason
+- **A `check_mode: false` probe must not depend on a file the same run installs.** Check mode
+  declines to write the file; `check_mode: false` makes the probe run anyway; it dies `rc 127` on a
+  path that does not exist yet — and it fails on the FIRST `--check`, the approval preview, which is
+  the worst place to discover it. Nothing in `--syntax-check` or `ansible-lint` sees this: the
+  ordering is only wrong at run time. When two roles need the same helper, **ship it with the task**
+  (`ansible.builtin.script`, one copy under the playbook's `files/`, arguments instead of Jinja)
+  rather than templating it onto the host and calling it later. That removes the ordering problem
+  instead of handling it, leaves no new artifact to manage, and — being a plain `.sh` rather than a
+  `.j2` — needs no `{% raw %}` around a Go format string like `{{range .Config.Env}}`
 - **`in` on `.stdout` is a SUBSTRING test — use `.stdout_lines`.** A script reporting `CHANGED` /
   `UNCHANGED` and a task written `changed_when: "'CHANGED' in result.stdout"` reports **changed on
   every run, forever**, because `'CHANGED' in 'UNCHANGED'` is true. The idempotency proof then
