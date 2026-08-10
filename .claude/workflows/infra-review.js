@@ -416,9 +416,16 @@ if (incomplete.size) {
   return {
     recommendation: partial.critical > 0 ? 'no-go' : 'go-with-fixes',
     summary: `INCOMPLETE REVIEW — reviewer(s) that NEVER ran: ${which}. ` +
-      `They produced nothing in any round, so the usual cause is an unresolvable agent definition: ` +
-      `symlink ~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,ansible-reviewer,incident-responder}.md ` +
+      `They produced nothing in any round. agent() returns null for BOTH causes and cannot tell them ` +
+      `apart, so check which one this was before acting: the task notification's <failures> block and ` +
+      `/workflows print the real error. ` +
+      `(a) "session limit" / timeout — nothing is broken; the run was too expensive. A four-reviewer ` +
+      `pass over a mixed repo costs ~700k tokens, so start it FIRST in a session, drop --deep, or ` +
+      `narrow the target. Resuming does not help when the failure was in round 1: nothing was cached. ` +
+      `(b) agent not resolvable — symlink ` +
+      `~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,ansible-reviewer,incident-responder}.md ` +
       `per pipeline-usage-guide §1.1, or run /init-project to copy them into this project's .claude/agents/. ` +
+      `Reinstalling agents will NOT fix (a). ` +
       `The findings below cover only the reviewers that DID run, so absence of findings here does NOT mean clean. ` +
       `Counts are PARTIAL: ${partial.critical} critical, ${partial.high} high, ${partial.medium} medium, ` +
       `${partial.low} low.` +
