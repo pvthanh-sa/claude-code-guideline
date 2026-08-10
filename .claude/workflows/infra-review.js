@@ -160,7 +160,7 @@ const BASELINE_SCHEMA = {
 
 const REPORT = {
   type: 'object',
-  required: ['recommendation', 'summary', 'topFindings'],
+  required: ['recommendation', 'summary', 'topFindings', 'findingsBySource'],
   properties: {
     recommendation: { type: 'string', enum: ['go', 'go-with-fixes', 'no-go'] },
     summary: { type: 'string' },
@@ -195,6 +195,16 @@ const REPORT = {
     mustFixBeforeApply: { type: 'array', items: { type: 'string' } },
     // Findings that match spec-documented accepted risks: listed for re-validation, not blocking.
     acceptedRisks: { type: 'array', items: { type: 'string' } },
+      // Findings contributed by EACH reviewer that ran. Required, because the failure this guards
+      // against is silent: a report can list 50 findings and look complete while an entire
+      // reviewer's output is missing. A per-source tally makes "ansible: 0" impossible to miss on
+      // a repo whose ansible-reviewer just spent 129k tokens.
+      findingsBySource: {
+        type: 'object',
+        properties: {
+          security: { type: 'number' }, infra: { type: 'number' }, ansible: { type: 'number' },
+        },
+      },
     // Count of security findings per Well-Architected Security Pillar category.
     waSecurityCounts: {
       type: 'object',
@@ -302,12 +312,39 @@ const seen = new Set()
 const key = (f) =>
   `${(f.severity || '').toLowerCase()}|${(f.title || '').toLowerCase().trim()}|${(f.location || '').toLowerCase().trim()}`
 const findings = []
+// Rank before any truncation. `findings` accumulates in roster order (security, infra, ansible),
+// so a plain slice() drops whatever the LAST reviewer found — and ansible-reviewer is always last.
+// Measured: 86 findings became "security 28 + infra 22", with all 24 ansible findings and 12 of
+// infra's silently gone, in a report whose whole purpose was to prove the four-reviewer path.
+// Sorting by severity first means a cap can only ever cost Low/Info, never a reviewer.
+const SEV_RANK = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
+const bySeverity = (a, b) =>
+  (SEV_RANK[(a.severity || '').toLowerCase()] ?? 9) - (SEV_RANK[(b.severity || '').toLowerCase()] ?? 9)
+const TOP_N = 50
+// Never truncate silently: say what was dropped and from whom, so a short report is visibly short.
+function topN(all) {
+  const ranked = [...all].sort(bySeverity)
+  if (ranked.length <= TOP_N) return ranked
+  const dropped = ranked.slice(TOP_N)
+  const per = {}
+  for (const f of dropped) per[f.source || '?'] = (per[f.source || '?'] || 0) + 1
+  log(`topFindings capped at ${TOP_N}: ${dropped.length} lower-severity finding(s) omitted (` +
+      Object.entries(per).map(([k, v]) => `${k}:${v}`).join(', ') +
+      `). Full set is in the per-agent transcripts.`)
+  return ranked.slice(0, TOP_N)
+}
 let cost = null
 let dry = 0
 // Track reviewers that returned null (agent missing / died on a terminal error). A failed reviewer
 // means the review is INCOMPLETE — it must NOT be allowed to read as a clean "go" (silent false-go
 // is the worst failure mode: the agentType may be absent if /init-project wasn't run for the project).
 const incomplete = new Set()
+// A reviewer that produced findings in round 1 and then died in round 3 is NOT missing — recall is
+// reduced, that is all. Conflating the two made the guard print "install the agents / run
+// /init-project" about three reviewers that had just spent 490k tokens reviewing, and sent the
+// operator to reinstall something that was never broken. Track them apart.
+const everRan = new Set()
+const lateFailures = []
 
 phase('Review')
 for (let round = 1; round <= MAX_ROUNDS; round++) {
@@ -330,9 +367,15 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   const res = await parallel(tasks)
   if (runCost) cost = res[roster.length]
 
-  // A null result = that reviewer didn't run (missing agentType or terminal error). Record it.
-  roster.forEach((r, i) => { if (!res[i]) incomplete.add(r.agentType) })
-  if (runCost && !cost) incomplete.add('cost-optimizer')
+  // A null result in ROUND 1 means the reviewer never ran at all — a missing agentType or a
+  // terminal error, and the review genuinely cannot be trusted. A null in a LATER round means it
+  // ran and then died (token limit, timeout); the findings it already produced still count.
+  roster.forEach((r, i) => {
+    if (res[i]) { everRan.add(r.agentType); return }
+    if (everRan.has(r.agentType)) lateFailures.push(`${r.agentType} (round ${round})`)
+    else incomplete.add(r.agentType)
+  })
+  if (runCost) { if (cost) everRan.add('cost-optimizer'); else incomplete.add('cost-optimizer') }
 
   const tagged = roster.flatMap((r, i) =>
     (((res[i] && res[i].findings) || []).map((f) => ({ ...f, source: r.source })))
@@ -372,16 +415,20 @@ if (incomplete.size) {
   log(`INCOMPLETE: reviewer(s) did not run: ${which} — counted ${partial.critical} critical / ${partial.high} high from the reviewers that did.`)
   return {
     recommendation: partial.critical > 0 ? 'no-go' : 'go-with-fixes',
-    summary: `INCOMPLETE REVIEW — the following reviewer(s) did not run: ${which}. ` +
-      `Likely cause: the agent definition(s) are not resolvable — install them user-level so /infra-review ` +
-      `works in any project (symlink ~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,ansible-reviewer,incident-responder}.md ` +
-      `per pipeline-usage-guide §1.1), or run /init-project to copy them into this project's .claude/agents/; ` +
-      `failing that the agent hit a terminal error. The findings below cover only the reviewers that DID run, so absence of ` +
-      `findings here does NOT mean clean. Re-run /infra-review after restoring the agents before trusting a go. ` +
-      `Counts below are PARTIAL — they cover the reviewers that ran: ` +
-      `${partial.critical} critical, ${partial.high} high, ${partial.medium} medium, ${partial.low} low.`,
+    summary: `INCOMPLETE REVIEW — reviewer(s) that NEVER ran: ${which}. ` +
+      `They produced nothing in any round, so the usual cause is an unresolvable agent definition: ` +
+      `symlink ~/.claude/agents/{infra-reviewer,cost-optimizer,security-auditor,ansible-reviewer,incident-responder}.md ` +
+      `per pipeline-usage-guide §1.1, or run /init-project to copy them into this project's .claude/agents/. ` +
+      `The findings below cover only the reviewers that DID run, so absence of findings here does NOT mean clean. ` +
+      `Counts are PARTIAL: ${partial.critical} critical, ${partial.high} high, ${partial.medium} medium, ` +
+      `${partial.low} low.` +
+      (lateFailures.length
+        ? ` SEPARATELY — and NOT a missing agent — these reviewers ran and then died in a later round: ` +
+          `${lateFailures.join(', ')}. Their earlier findings are included above; only RECALL is reduced. ` +
+          `A token limit mid-run looks like this. Do not reinstall anything on account of it.`
+        : ''),
     counts: partial,
-    topFindings: findings.slice(0, 50),
+    topFindings: topN(findings),
     mustFixBeforeApply: [
       `Restore missing reviewer agent(s): ${which}, then re-run /infra-review`,
       ...findings
@@ -390,6 +437,15 @@ if (incomplete.size) {
     ],
   }
 }
+// Every reviewer ran at least once, but a later round may still have died. That is not an
+// incomplete review — it is a shallower one — and staying silent about it would let a --deep run
+// that actually managed one round read as if it had looped to exhaustion.
+if (lateFailures.length) {
+  log(`NOTE: ${lateFailures.join(', ')} ran and then failed in a later round. Findings from their ` +
+      `completed rounds are included; recall is lower than a full --deep pass. Common cause: a ` +
+      `session token limit. No agent is missing.`)
+}
+
 // Baseline-aware labeling: read the prior report (if one was passed) so synthesis can mark each
 // finding RESOLVED / NEW / STILL-OPEN. The finders above always full-scan — this only adds labels.
 let baseline = null
@@ -436,6 +492,10 @@ const report = await agent(
   `Critical/High items in mustFixBeforeApply. Set each topFindings.source from the finding's "source" field, ` +
   `and carry over each security finding's "waCategory". Also tally security findings per ` +
   `Well-Architected Security category into waSecurityCounts so the human sees coverage across the pillar.\n\n` +
+    `Set findingsBySource to the count of INPUT findings per source — count what you were GIVEN, not ` +
+    `what you kept. EVERY source present in the input must appear in topFindings: if the cap forces a ` +
+    `choice, drop the lowest-severity items ACROSS sources, never a whole source. A reviewer that ran ` +
+    `and contributed nothing to topFindings is indistinguishable from one that never ran at all.\n\n` +
   `The target's stack is: ${STACK} (${stackNoun}). Say so in the summary so the reader knows which ` +
   `reviewers ran${HAS_TF ? '' : ' — cost analysis is Terraform-only and did not run for this target'}.\n\n` +
   `FINDINGS (deduped over ${DEEP ? 'multiple rounds' : '1 round'}, source ∈ security|infra|ansible):\n${JSON.stringify(findings)}\n\n` +
