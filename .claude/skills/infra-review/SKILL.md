@@ -89,6 +89,48 @@ isn't applied yet or you're reviewing pure code.
   a read-only identity), warn and recommend configuring the read-only MCP profile per
   `aws-iam-mcp-setup.md` before relying on `--live`.
 
+**Resuming a review that ran out of budget — do this BEFORE anything else.**
+
+A four-reviewer pass over a mixed repo costs roughly **700k output tokens**, which is more than one
+session usually has. Measured on a real repo: `--deep` spent 681k and lost rounds 2-3, a retry spent
+792k the same way, and a single-pass attempt spent 706k and lost **all four reviewers in round 1** —
+0 findings for 706k tokens. So the review is built to run in pieces.
+
+**Partial-state file:** `docs/reviews/.partial-<env>.json`, holding
+`{ "allFindings": [...], "ranSources": [...], "target": "...", "startedAt": "..." }`.
+
+1. **Before running**, look for it and decide what still needs to run:
+   ```bash
+   ENV="$(basename '<target-dir>')"; P="docs/reviews/.partial-${ENV}.json"
+   [ -f "$P" ] && python3 -c "
+   import json;d=json.load(open('$P'))
+   print('resuming:',len(d.get('allFindings',[])),'finding(s) already collected from',
+         ', '.join(d.get('ranSources',[])) or 'nothing')" || echo "no partial state — full run"
+   ```
+   Pass `args.priorFindings` = that file's `allFindings`, and `args.only` = the sources NOT yet in
+   `ranSources` (`security`, `infra`, `ansible`, `cost` — restricted to the ones the preflight's
+   stack actually has).
+
+2. **After every run**, write the file from the workflow's `allFindings` + `ranSources` — including
+   after a run that failed part way, because that is exactly when it matters.
+
+3. **Delete it** once the report is written and every expected source is present. A stale partial
+   file would silently suppress a reviewer on the next full review.
+
+**Deliberately running one reviewer at a time** is the same mechanism, used on purpose:
+```
+args: { path, only: ["security"] }                      # session 1
+args: { path, only: ["infra","ansible","cost"], priorFindings: [...] }   # session 2
+```
+A source listed in `only` is *deferred*, not missing — the incomplete-reviewer guard does not fire
+for it, and its findings arrive via `priorFindings`.
+
+> `agent()` returns `null` for a dead agent and for an unresolvable `agentType` alike, so the guard
+> cannot tell a token limit from a missing definition. Read the run's `<failures>` block or
+> `/workflows` before acting on its advice — reinstalling agents does nothing for a token limit. And
+> `resumeFromRunId` replays only agents that COMPLETED: a round-1 failure caches nothing, so it
+> re-runs everything at full price. The partial-state file above is what actually resumes work.
+
 **Cadence (which mode when):**
 
 | Situation | How to run |

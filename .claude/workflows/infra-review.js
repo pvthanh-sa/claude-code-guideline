@@ -1,6 +1,6 @@
 export const meta = {
   name: 'infra-review',
-  description: 'Parallel stack-aware review of an environment — Terraform, Ansible, or both — synthesized into one severity-ranked go/no-go report. Stage 4 of the DevOps pipeline. The preflight detects which stacks are present and picks the reviewer roster: Terraform gets security + infra-best-practice + cost, Ansible gets security + ansible (idempotency, secrets, privilege, targeting safety), a mixed repo gets all four in one report. Pass args.deep=true for loop-until-dry (higher recall: re-runs finders until 2 consecutive rounds find nothing new). Pass args.baseline=<path to the prior report> to label each finding RESOLVED / NEW / STILL-OPEN vs the last review — finders STILL full-scan every run (catches regressions in unchanged files); only synthesis is baseline-aware (no delta-skip). Pass args.note="<what changed>" to record an operator change-note in the report and focus the finders on that change (they still full-scan).',
+  description: 'Parallel stack-aware review of an environment — Terraform, Ansible, or both — synthesized into one severity-ranked go/no-go report. Stage 4 of the DevOps pipeline. The preflight detects which stacks are present and picks the reviewer roster: Terraform gets security + infra-best-practice + cost, Ansible gets security + ansible (idempotency, secrets, privilege, targeting safety), a mixed repo gets all four in one report. Pass args.deep=true for loop-until-dry (higher recall: re-runs finders until 2 consecutive rounds find nothing new). Pass args.baseline=<path to the prior report> to label each finding RESOLVED / NEW / STILL-OPEN vs the last review — finders STILL full-scan every run (catches regressions in unchanged files); only synthesis is baseline-aware (no delta-skip). Pass args.note="<what changed>" to record an operator change-note in the report and focus the finders on that change (they still full-scan). RESUMABLE: a full four-reviewer pass costs ~700k tokens, more than one session usually has, so pass args.only=["security"] to run a subset and args.priorFindings=[...] to carry forward what earlier partial runs already found. The return value carries allFindings (raw, uncapped) and ranSources so the caller can persist them between sessions. A source omitted from args.only is DEFERRED, not missing -- the incomplete-reviewer guard does not fire for it.',
   phases: [
     { title: 'Review', detail: 'security-auditor + per-stack reviewers (looped until dry when deep) + cost-optimizer' },
     { title: 'Synthesize', detail: 'merge + dedupe + rank by severity, recommend go/no-go' },
@@ -311,7 +311,11 @@ const costPrompt =
 const seen = new Set()
 const key = (f) =>
   `${(f.severity || '').toLowerCase()}|${(f.title || '').toLowerCase().trim()}|${(f.location || '').toLowerCase().trim()}`
-const findings = []
+// Seed from whatever earlier PARTIAL runs already produced, and seed `seen` with them too so a
+// reviewer re-run today cannot duplicate a finding it reported yesterday. This is what makes the
+// review survive a session that ran out of budget half way through.
+const findings = [...PRIOR]
+for (const f of PRIOR) seen.add(key(f))
 // Rank before any truncation. `findings` accumulates in roster order (security, infra, ansible),
 // so a plain slice() drops whatever the LAST reviewer found — and ansible-reviewer is always last.
 // Measured: 86 findings became "security 28 + infra 22", with all 24 ansible findings and 12 of
@@ -356,28 +360,38 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   if (HAS_TF) roster.push({ source: 'infra', agentType: 'infra-reviewer', prompt: infraPrompt(round) })
   if (HAS_ANSIBLE) roster.push({ source: 'ansible', agentType: 'ansible-reviewer', prompt: ansiblePrompt(round) })
 
-  const tasks = roster.map((r) => () =>
+  // args.only lets an operator spend one session on one reviewer. A source that is skipped is NOT
+  // "did not run" -- it was deliberately deferred, and its findings arrive via args.priorFindings on
+  // a later run. Conflating the two would make every partial run report itself as incomplete.
+  const active = ONLY.length ? roster.filter((r) => ONLY.includes(r.source)) : roster
+  if (ONLY.length && round === 1) {
+    const deferred = roster.filter((r) => !ONLY.includes(r.source)).map((r) => r.source)
+    log(`partial run: running ${active.map((r) => r.source).join(', ') || '(nothing — check args.only)'}` +
+        (deferred.length ? `; deferred ${deferred.join(', ')} (pass their findings back via priorFindings)` : ''))
+  }
+
+  const tasks = active.map((r) => () =>
     agent(r.prompt, { agentType: r.agentType, label: `${r.source} r${round}`, phase: 'Review', schema: FINDINGS })
   )
   // Cost is Terraform-only (instance classes, NAT, storage tiers) and round-1 only.
-  const runCost = round === 1 && HAS_TF
+  const runCost = round === 1 && HAS_TF && (!ONLY.length || ONLY.includes('cost'))
   if (runCost) {
     tasks.push(() => agent(costPrompt, { agentType: 'cost-optimizer', label: 'cost', phase: 'Review', schema: COST }))
   }
   const res = await parallel(tasks)
-  if (runCost) cost = res[roster.length]
+  if (runCost) cost = res[active.length]
 
   // A null result in ROUND 1 means the reviewer never ran at all — a missing agentType or a
   // terminal error, and the review genuinely cannot be trusted. A null in a LATER round means it
   // ran and then died (token limit, timeout); the findings it already produced still count.
-  roster.forEach((r, i) => {
+  active.forEach((r, i) => {
     if (res[i]) { everRan.add(r.agentType); return }
     if (everRan.has(r.agentType)) lateFailures.push(`${r.agentType} (round ${round})`)
     else incomplete.add(r.agentType)
   })
   if (runCost) { if (cost) everRan.add('cost-optimizer'); else incomplete.add('cost-optimizer') }
 
-  const tagged = roster.flatMap((r, i) =>
+  const tagged = active.flatMap((r, i) =>
     (((res[i] && res[i].findings) || []).map((f) => ({ ...f, source: r.source })))
   )
   const fresh = tagged.filter((f) => {
@@ -436,6 +450,10 @@ if (incomplete.size) {
         : ''),
     counts: partial,
     topFindings: topN(findings),
+    // RAW and uncapped, for the skill to persist. topFindings is ranked and capped for humans;
+    // feeding that back as priorFindings next run would silently lose everything the cap dropped.
+    allFindings: findings,
+    ranSources: [...everRan],
     mustFixBeforeApply: [
       `Restore missing reviewer agent(s): ${which}, then re-run /infra-review`,
       ...findings
@@ -510,4 +528,7 @@ const report = await agent(
   { label: 'synthesize', phase: 'Synthesize', schema: REPORT },
 )
 
-return report
+  // Same reason as the incomplete branch: the caller persists the RAW set so a later partial run can
+  // resume from it. The synthesised report is for humans and is lossy by design -- feeding it back as
+  // priorFindings would silently drop everything the cap removed.
+  return { ...(report || {}), allFindings: findings, ranSources: [...everRan] }

@@ -813,6 +813,28 @@ Flags (you rarely need more than `--deep`):
 
 > Findings the spec lists under **Accepted risks** (`docs/specs/*.spec.md`) are still reported but **excluded** from the go/no-go counts — that's how a conscious decision stops blocking. Real defects stay **[STILL-OPEN]** every run until fixed.
 
+### It costs ~700k tokens — plan the run, and resume instead of restarting
+
+Measured on a real mixed repo: `--deep` spent 681k and lost rounds 2-3 to a session limit, a retry
+spent 792k the same way, and a single-pass attempt spent 706k and lost **all four reviewers in round
+1** — 0 findings for 706k tokens. One session rarely holds a whole review, so the stage is built to
+run in pieces.
+
+| Lever | Why |
+|---|---|
+| Run it **first** in a session | The budget is shared with everything already done. A review started after 500k of other work has 500k less to spend. |
+| Drop `--deep` unless you need recall | One pass is right for a re-review; `--deep` is for a first audit or a periodic sweep. |
+| Narrow the target | `environments/<env>` = Terraform only (3 reviewers); the repo root = both (4). Review the half you changed. |
+| **Run one reviewer per session** | `args.only: ["security"]` today, `args.only: ["infra","ansible"]` + `args.priorFindings` tomorrow. The skill persists `docs/reviews/.partial-<env>.json` between them and merges + dedupes on the way in. |
+
+> `resumeFromRunId` is NOT the resume mechanism here. It replays only agents that **completed** — a
+> round-1 failure caches nothing and re-runs the whole thing at full price. The partial-state file is
+> what carries work across sessions. Read the journal before assuming there is something to recover.
+
+> `agent()` returns `null` for a dead agent and an unresolvable `agentType` alike, so the guard cannot
+> tell a token limit from a missing definition. Check the run's `<failures>` block or `/workflows`
+> before acting on its advice — reinstalling agents does nothing for a token limit.
+
 ### Optional: review the live stack (`--live`)
 
 The 3 finders read **code + plan** — they can't see what actually got applied. Once the env is
