@@ -323,6 +323,31 @@ a container as substitute evidence, and label it as such.
 
 ---
 
+
+## Re-running after an interrupted session
+
+This skill writes across several phases, so a session that runs out of budget leaves a **partial
+tree that looks finished** — the failure mode is not lost work, it is work that appears complete.
+
+**Re-running is safe and is the intended recovery.** Every file this skill produces is written from
+the spec plus the source of truth, so a second pass regenerates the same content; it does not append,
+merge, or accumulate. What it will NOT do is notice that a half-written file is half-written, so:
+
+```bash
+# Newest last: the tail is what the interrupted session was writing when it stopped.
+# No -newermt here. A RELATIVE timestamp for it is GNU-find-only, and `bfs` -- a common drop-in
+# replacement -- rejects it and returns NOTHING, which reads as "nothing written recently": the
+# exact opposite of the truth, on the one command you are using to find the truncated file.
+find ansible/ -type f -printf '%TY-%Tm-%Td %TH:%TM  %p\n' 2>/dev/null | sort | tail -20
+```
+
+Before re-running, check the last thing the interrupted session was writing and **delete that file**
+rather than trusting it. A truncated role task file parses fine and fails much later, somewhere else.
+
+**Hand-edits survive nothing.** If you changed a generated file by hand, a re-run overwrites it —
+move the change into the source of truth (the spec, or the script being ported) first, or the next
+run silently reverts it.
+
 ## Phase 4: STOP at Gate G3b
 
 Present, in the user's language:

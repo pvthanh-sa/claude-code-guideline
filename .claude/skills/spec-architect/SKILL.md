@@ -31,6 +31,15 @@ Well-Architected design, estimate cost, and capture it all in a reviewable spec 
 
 ## Phase 1: Discovery (interactive — do not skip)
 
+**First: is there a draft from an interrupted run?**
+
+```bash
+ls -1 docs/specs/*.spec.draft.md 2>/dev/null || echo "(none — full interview)"
+```
+
+If one exists, READ it and resume from Phase 2 — confirm its contents in a single message instead of
+re-asking. The interview is the only thing in this skill a re-run cannot recreate; see Phase 1.5.
+
 Read any context already present (`README.md`, an existing requirements/runbook doc, existing
 `docs/specs/*`, a `.tf` tree or an `ansible/` tree if the user points at one). Then **ask the user**
 the open questions below. Use the `AskUserQuestion` tool for choices with clear options; ask
@@ -77,6 +86,39 @@ Handle "unclear" in two ways — never make the user invent the answer, and neve
 - **Business facts only the user knows** (budget ceiling, real traffic, compliance constraints,
   which environments, data sensitivity): ask. If still unknown, record in §9 as
   *"Need from you: …"* — do NOT invent a number or assume a constraint.
+
+## Phase 1.5: Persist the interview BEFORE designing anything
+
+**The interview is the one input a re-run cannot recreate.** Everything after this point — the
+Well-Architected pass, the pricing lookups, the module mapping — is work a machine can redo. The
+user's answers are not: budget ceilings, real traffic, compliance constraints, which environments
+exist. If the session dies in Phase 2 or 3 (MCP pricing calls and specialist skills are the
+expensive part), re-running means asking a human the same questions again.
+
+So write what you already know, immediately, before spending a token on design:
+
+```bash
+mkdir -p docs/specs
+```
+
+Write `docs/specs/<spec-name>.spec.draft.md` containing, verbatim, every answer from Phase 1 — the
+stack, each question asked, each answer given, and each item recorded as *"Need from you: …"*. No
+design, no recommendations, no cost: this file is a transcript, not a spec.
+
+Open it with:
+
+```markdown
+> **DRAFT — interview only.** Phase 1 answers, captured before the design phase so a lost session
+> costs tokens and not the user's time. `/spec-architect` reads this on the next run and resumes at
+> Phase 2 instead of re-interviewing. Delete it when the real spec is written.
+```
+
+**On the NEXT run, read `docs/specs/<spec-name>.spec.draft.md` first.** If it exists, confirm its
+contents with the user in one message (*"picking up from: <one-line summary> — still accurate?"*)
+rather than re-asking the whole set, then go straight to Phase 2. Only re-interview what changed.
+
+**Delete the draft in Phase 4**, once `docs/specs/<spec-name>.spec.md` is written — a stale draft
+would make the next run resume from an interview that has been superseded.
 
 ## Phase 2: Design (Well-Architected)
 
@@ -130,6 +172,13 @@ throws away the design and leaves G3b with nothing to build from.
 > serverless/managed stack. This skill has no `Bash`, so it cannot resolve and read the guideline
 > repo's copy of the template — the inline copy below is therefore load-bearing, and the §1.5 doctor
 > mechanically diffs the two heading lists so this pair cannot drift again unnoticed.
+
+Once the spec file is written, delete the interview draft — a stale draft would make the next run
+resume from questions this spec has already answered:
+
+```bash
+rm -f docs/specs/<spec-name>.spec.draft.md
+```
 
 Write `docs/specs/<spec-name>.spec.md` using the template below (kept in sync with
 `knowledge/templates/infra-spec-template.md`). Fill every section from the discovery answers. In

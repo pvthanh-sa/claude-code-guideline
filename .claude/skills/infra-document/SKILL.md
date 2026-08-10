@@ -254,6 +254,25 @@ for d in docs/diagrams/infra*.drawio; do
 done
 ```
 
+Then prove every PNG is actually newer than the source it came from. The pair can drift silently:
+the `.drawio` is written in Phase 3 and the PNG only here, so a session that dies in between leaves
+a NEW diagram beside an OLD render — and the PNG is what GitHub shows and what a reader looks at.
+Nothing else in the pipeline notices.
+
+```bash
+stale=0
+for d in docs/diagrams/infra*.drawio; do
+  png="${d%.drawio}.png"
+  if   [ ! -f "$png" ];  then echo "MISSING  $png";                       stale=1
+  elif [ "$d" -nt "$png" ]; then echo "STALE    $png is older than $d";   stale=1
+  else                        echo "ok       $png"; fi
+done
+[ "$stale" -eq 0 ] || echo "FIX BEFORE G5: re-run the exporter above — a stale PNG is what the reader sees."
+```
+
+A `STALE` or `MISSING` line is **blocking**: do not present the document at G5 with a render that
+does not match its source.
+
 **Exporter exit 0** → `Read` **each** exported PNG (you can see it) and check it against the Phase 1
 component list. The whole reason to split is readability, so the vision check matters *most* here —
 verify each view is genuinely legible, not just correct:
