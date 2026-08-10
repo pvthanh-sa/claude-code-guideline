@@ -647,11 +647,13 @@ directory per convention, and stop at `terraform plan` for you to review.
 6. **Installs the CI security gate** — `.github/workflows/iac-scan.yml` (idempotent, drift-aware).
    It re-runs fmt/validate/tflint/Checkov/Trivy on **every PR** touching `.tf` (defense-in-depth:
    local gate + server-side gate).
-   - Making its check **Required** in branch protection needs two things first, in this order:
-     **(a)** delete the workflow's two `paths:` blocks — a path-filtered workflow reports *no* status
-     when skipped, GitHub cannot tell that apart from "not started", and a PR touching no `.tf`
-     blocks forever; **(b)** open one PR so the check runs at least once, since GitHub's Required-check
-     picker only lists checks it has already seen.
+   - Mark its check **Required** in branch protection. The template ships with **no `paths:` filter**
+     on purpose: a path-filtered workflow reports *no* status when skipped, GitHub cannot tell that
+     apart from "not started", and a required check that can be skipped blocks any PR outside those
+     paths forever — nothing failed, nothing to re-run. Every PR pays ~2-4 min instead; that is the
+     cheaper side of the trade. Do not add the filter back (monorepo escape hatch in the template
+     README: keep the trigger unfiltered, gate the expensive *steps*).
+   - **Open one PR first** — GitHub's Required-check picker only lists checks it has already seen.
    - On a **private repo without GitHub Code Security**, the two SARIF uploads skip by design and
      Checkov's findings are read from the **run summary** instead of the Security tab. See
      [`templates/iac-scan/README.md`](templates/iac-scan/README.md).

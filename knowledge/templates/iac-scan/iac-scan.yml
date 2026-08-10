@@ -5,18 +5,30 @@
 # Findings surface in PR checks and the repo Security tab (SARIF).
 name: IaC Scan
 
-# Making this job a REQUIRED status check means deleting the two `paths:` blocks below
-# first: a workflow skipped by a paths filter reports no status, GitHub cannot tell
-# "skipped" from "not started", and the PR blocks forever with nothing to fix. The filter
-# is evaluated against the PR's whole base...head diff, so a PR that adds a file and
-# removes it again locks itself out. Before removing them, confirm fmt/tflint/checkov/
-# trivy all exit 0 on a repo with zero .tf files — only `terraform validate` guards that.
+# NO `paths:` filter, deliberately — this gate is meant to be a REQUIRED status check.
+# A workflow skipped by a path filter reports no status at all, and GitHub cannot tell
+# "skipped" apart from "not started", so a required check that can be skipped blocks any
+# PR outside those paths forever: nothing failed, nothing to re-run, nothing to fix. The
+# filter is also evaluated over the PR's whole base...head diff, so a PR that adds a file
+# and removes it again locks itself out.
+#
+# The trade is ~2-4 min of runner time on PRs that touch no Terraform. Take it: one
+# deadlocked PR costs more than a year of that. It also closes a real gap — the scanners
+# read the whole tree, not the diff, so a finding arriving via a merge into a stale branch
+# is only caught by a run that was not filtered away.
+#
+# Adding a filter back (large monorepo, minutes actually scarce): do NOT filter the
+# trigger. Keep it unfiltered so the job always reports, and gate the expensive STEPS on a
+# change-detection step (e.g. `dorny/paths-filter`, SHA-pinned) — the check still reports
+# success on every PR, it just does no work when nothing relevant changed.
+#
+# If you keep this unfiltered on a repo that may contain ZERO .tf files, first confirm
+# fmt/tflint/checkov/trivy all exit 0 on an empty tree — only `terraform validate` guards
+# that case here.
 on:
   pull_request:
-    paths: ['**/*.tf', '**/*.tfvars', '**/*.hcl', '.github/workflows/iac-scan.yml']
   push:
     branches: [main, master]   # both: a repo created before GitHub's default flipped still uses master
-    paths: ['**/*.tf', '**/*.tfvars', '**/*.hcl']
 
 permissions:
   contents: read

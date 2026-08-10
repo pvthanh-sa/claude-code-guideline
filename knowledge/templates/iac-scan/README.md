@@ -64,13 +64,31 @@ docker run --rm -v "$PWD":/repo bridgecrew/checkov:latest -d /repo --framework t
   to silence accepted findings.
 - **Adjust Trivy severity:** edit `severity: CRITICAL,HIGH` (e.g. add `MEDIUM`) or add a `.trivyignore`.
 - **Severity policy (production norm):** Critical → block; High → block or manual-approve; Medium/Low → log.
-- **Branch protection:** mark the `iac-scan` check **Required** so PRs can't merge red — but **delete
-  both `paths:` blocks first**. A workflow skipped by a path filter reports *no* status, GitHub cannot
-  distinguish "skipped" from "not started", and a PR touching no `.tf` files then blocks forever with
-  nothing to fix. Before removing them, confirm fmt/tflint/checkov/trivy all exit 0 on a repo with zero
-  `.tf` files.
+- **Branch protection:** mark the `iac-scan` check **Required** so PRs can't merge red. The template
+  ships **without** `paths:` filters precisely so this is safe — see "Why no paths filter" below.
 - **A check must have run once before it can be marked Required** — GitHub's picker only lists checks
   it has seen. Open one PR that exercises the workflow, then set branch protection.
+
+## Why no `paths:` filter
+
+A required status check must be able to report on **every** PR. A workflow skipped by a path filter
+reports *no* status, and GitHub cannot distinguish "skipped" from "not started" — so a required check
+that can be skipped blocks any PR outside those paths **forever**: nothing failed, nothing to re-run,
+nothing to fix. (The filter is evaluated over the PR's whole base…head diff, so a PR that adds a file
+and removes it again locks itself out too.)
+
+The cost is ~2-4 min of runner time on PRs that change no Terraform. Take it — one deadlocked PR
+costs more than a year of that. It also closes a real gap: the scanners read the **whole tree**, not
+the diff, so a finding arriving via a merge into a stale branch is only caught by a run that was not
+filtered away.
+
+**If minutes are genuinely scarce (large monorepo):** do not filter the *trigger*. Keep it unfiltered
+so the job always reports, and gate the expensive **steps** on a change-detection step (e.g.
+`dorny/paths-filter`, SHA-pinned per `rules/cicd.md`). The check still reports success on every PR —
+it just does no work when nothing relevant changed.
+
+**Repos that may contain zero `.tf` files:** confirm fmt/tflint/checkov/trivy all exit 0 on an empty
+tree before relying on this; only `terraform validate` guards that case here.
 
 ## Gotchas
 
