@@ -94,6 +94,17 @@ their own rules.
   that just stopped accepting them. Testing hides this: a dead sshd answers `Connection refused`
   instantly, so only the DROPPED-packet case (wrong `ListenAddress`, `MaxStartups`, hung PAM, a
   firewall change) spends the full timeout. Use `ControlPersist=600s` and assert the budget
+- **Size a retry budget from `retries`, never from the registered `attempts`.** Executions are
+  `1 + retries`, but the `attempts` field reports one FEWER than the task actually ran — measured
+  on 2.21: `retries: 5` executes **6** times and registers `attempts: 5`. Read back as the budget,
+  that undercounts every loop by one execution, which is exactly the margin a timeout is chosen on
+- **Wait through a transient state, not through a verdict.** A health probe whose `until:` tests for
+  *success* burns the whole budget on a service that already failed, then reports the timeout
+  instead of the cause. Test for a **terminal** answer (`in ['healthy', 'unhealthy']`) so a real
+  failure returns on the first attempt, and keep `failed_when: false` so an exhausted loop stays
+  non-fatal and the `assert` is still what reports — verified: the play reaches the assert and the
+  `fail_msg` prints the observed state. An empty answer is not terminal either: mid-restart the
+  container is briefly absent, and treating that as the verdict reports "no answer" as the state
 - The human runs the playbook. Author, verify, present the diff — then stop
 
 ## Multi-OS
