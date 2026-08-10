@@ -27,6 +27,19 @@ let BASELINE_DISABLED = false
 // Optional free-text note of what the operator changed this round. Recorded in the report AND given to
 // the finders as a FOCUS hint — they still full-scan (the note never narrows coverage, only adds attention).
 const NOTE = (_a && typeof _a.note === 'string' && _a.note.trim()) ? _a.note.trim() : ''
+// ---- RESUMABILITY -------------------------------------------------------------
+// A four-reviewer pass costs ~700k tokens, which is more than one session usually has. Losing all
+// of it because reviewer four ran out of budget is the failure this pair of inputs removes.
+//
+//   args.only          -- run ONLY these sources (e.g. ["ansible"]). Everything else is DEFERRED,
+//                         which is not the same as missing: the incomplete guard must not fire.
+//   args.priorFindings -- findings already collected by earlier partial runs. Merged and deduped
+//                         exactly like fresh ones, so the report is whole even though no single
+//                         run produced all of it.
+//
+// The skill owns the state file; scripts have no fs access, so the split is deliberate.
+const ONLY = Array.isArray(_a && _a.only) ? _a.only.filter((x) => typeof x === 'string') : []
+const PRIOR = Array.isArray(_a && _a.priorFindings) ? _a.priorFindings : []
 const noteFocus = NOTE
   ? ` The operator says they just changed: "${NOTE}". Still audit the FULL configuration as above — do ` +
     `NOT narrow scope — but pay particular attention to that change and its blast radius (what it touches, ` +

@@ -164,6 +164,22 @@ for it, and its findings arrive via `priorFindings`.
 
 ---
 
+## Phase 0: Check the workflow script before spending tokens on it
+
+`node --check` parses; it does **not** resolve identifiers. A workflow that references an undeclared
+`const` passes `--check` cleanly and then dies at runtime — after the preflight agent has already
+run and been paid for. That happened: an edit added uses of `ONLY`/`PRIOR` while the declaration was
+lost to a failed patch, and the run died with `PRIOR is not defined` at line 311.
+
+```bash
+SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/infra-review}")"
+node --check "$HOME/.claude/workflows/infra-review.js" \
+  && python3 "$SK/scripts/check-undeclared.py" "$HOME/.claude/workflows/infra-review.js"
+```
+
+Run it after ANY edit to the workflow. Both must pass — syntax and identifiers are different
+questions, and only the second one catches this.
+
 ## Phase 1: Run the parallel review Workflow
 
 The workflow is installed into your user dir at a **machine-independent** path —
