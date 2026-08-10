@@ -22,6 +22,8 @@ const DRY_STOP = 2
 // Optional path to the previous report. Finders ignore it (they ALWAYS full-scan); ONLY synthesis
 // reads it — to label findings RESOLVED / NEW / STILL-OPEN. No delta-skip: unchanged files are still audited.
 const BASELINE = (_a && typeof _a.baseline === 'string' && _a.baseline.trim()) ? _a.baseline.trim() : ''
+// Set at synthesis time when a partial run would make the baseline lie. See the guard below.
+let BASELINE_DISABLED = false
 // Optional free-text note of what the operator changed this round. Recorded in the report AND given to
 // the finders as a FOCUS hint — they still full-scan (the note never narrows coverage, only adds attention).
 const NOTE = (_a && typeof _a.note === 'string' && _a.note.trim()) ? _a.note.trim() : ''
@@ -471,10 +473,28 @@ if (lateFailures.length) {
       `session token limit. No agent is missing.`)
 }
 
+// GUARD: `only` + `baseline` is a false-RESOLVED machine unless priorFindings covers the deferred
+// sources. Synthesis marks a baseline finding RESOLVED when it has no match in the CURRENT set --
+// and a reviewer that was deliberately skipped contributes nothing, so every one of its real,
+// still-open findings would be reported as fixed. That is worse than no labels at all: it tells the
+// operator a Critical went away.
+if (ONLY.length && BASELINE) {
+  const covered = new Set(findings.map((f) => f.source))
+  const missing = ['security', 'infra', 'ansible'].filter(
+    (src) => !ONLY.includes(src) && !covered.has(src),
+  )
+  if (missing.length) {
+    log(`baseline DISABLED: this run skipped ${missing.join(', ')} and priorFindings carries nothing ` +
+        `for them, so every baseline finding from those reviewers would be mislabelled RESOLVED. ` +
+        `Re-run with priorFindings from the partial-state file, or without --baseline.`)
+    BASELINE_DISABLED = true
+  }
+}
+
 // Baseline-aware labeling: read the prior report (if one was passed) so synthesis can mark each
 // finding RESOLVED / NEW / STILL-OPEN. The finders above always full-scan — this only adds labels.
 let baseline = null
-if (BASELINE) {
+if (BASELINE && !BASELINE_DISABLED) {
   baseline = await agent(
     `Read the prior infra-review report file at "${BASELINE}". If it does not exist or can't be read, ` +
     `return {"found": false}. If it exists, return found:true, baselineDate (from the filename or the ` +

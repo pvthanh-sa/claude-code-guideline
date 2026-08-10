@@ -3,7 +3,7 @@ name: infra-review
 description: 'Stage 4 of the DevOps pipeline. Run a parallel, stack-aware review of an environment via the infra-review Workflow — Terraform gets security + infra-best-practice + cost, Ansible gets security + idempotency/secrets/privilege/targeting, a mixed repo gets all four in one report — save it to docs/reviews/<env>-<date>.md, present one synthesized severity-ranked go/no-go — baseline-aware on re-reviews, labeling each finding RESOLVED/NEW/STILL-OPEN vs the prior report — optionally cross-checking the deployed stack read-only with --live (drift + live-only findings), and STOP at human gate G4. Never edits code or applies without explicit approval.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Workflow
-argument-hint: '[target-dir] [--deep] [--live] [--baseline <prior-report> | --no-baseline] [--note "<what changed>"]'
+argument-hint: '[target-dir] [--deep] [--live] [--only security,infra,ansible,cost] [--baseline <prior-report> | --no-baseline] [--note "<what changed>"]'
 ---
 
 # Infra Review — Stage 4 (Review gate)
@@ -88,6 +88,22 @@ isn't applied yet or you're reviewing pure code.
   never blocks. If the resolved profile turns out to be the same as the backend/apply profile (i.e. not
   a read-only identity), warn and recommend configuring the read-only MCP profile per
   `aws-iam-mcp-setup.md` before relying on `--live`.
+
+**`--only <sources>` — run part of the review now, the rest later.** Comma-separated, from
+`security,infra,ansible,cost`. Parse it into `args.only`. This is the flag that makes a 700k-token
+stage fit in a session that does not have 700k tokens.
+
+```
+/infra-review <dir> --only ansible
+/infra-review <dir> --only security,infra,cost        # the next session
+```
+
+> **`--only` and `--baseline` together need `priorFindings`, or the labels lie.** Synthesis marks a
+> baseline finding RESOLVED when nothing in the CURRENT set matches it — and a reviewer that was
+> deliberately skipped contributes nothing, so all of its still-open findings would be reported as
+> fixed. The workflow detects this and **disables baseline labelling** with a log line rather than
+> emitting a report that says a Critical went away. Feed `priorFindings` from the partial-state file
+> and the labels are correct again.
 
 **Resuming a review that ran out of budget — do this BEFORE anything else.**
 
