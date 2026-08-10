@@ -12,7 +12,21 @@
 # Neither is a reason to skip the gate; both are reasons not to read a green run as "no secrets".
 #
 # `git` mode reads commit history, `dir` mode reads the working tree. A secret committed and
-# then deleted is invisible to `dir` and caught by `git` — CI must run `git`.
+# then deleted is invisible to `dir` and caught by `git` — CI must run `git`. Run BOTH before a
+# first push: `git` was clean on a repo whose working tree held seven live credentials.
+#
+# NAME-BASED IGNORES ARE PART OF THE GATE, because content scanning cannot always work.
+#   * A saved Terraform plan is a deflate ZIP whose embedded tfstate holds every SecureString value
+#     in cleartext. Scanned directly it reports "scanned ~0 bytes / no leaks found" — green, on a
+#     file full of production credentials. Ignore the FAMILY (`tfplan*`, `*.tfplan*`, `plan.json`),
+#     never the literal name: `tfplan` + `*.tfplan` matched neither `tfplan-g3b` nor
+#     `tfplan-baseline`, both of which a plain `terraform plan -out=` produces.
+#   * Same shape for cloud key files. An ignore rule naming `sa-key-<id>.json` protects exactly one
+#     file; rotating the key yields a new id, a new name, and no rule.
+#
+# A REVIEW REPORT IS A COMMITTED ARTIFACT. Security findings quote the secret they found; copying
+# that text into `docs/reviews/` publishes it. Record the location and the class, never the value —
+# caught here on a report's first scan, before any commit.
 #
 # Exit code 1 means "leaks found" AND "config failed to load". A gate that treats non-zero as
 # a leak reports a phantom finding on a broken config; check the report, not just the code.

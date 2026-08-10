@@ -161,6 +161,29 @@ their own rules.
 - `ansible.cfg` is found relative to the **current directory**, not the playbook's. **`cd` into the
   ansible dir** — `ANSIBLE_CONFIG=<dir>/ansible.cfg` loads the file but leaves the relative paths
   inside it (`inventory`, `roles_path`) resolving against the caller's cwd
+- **A verdict built on a registered result must survive check mode, and `check_mode: false` is the
+  fix — not a `when:` guard.** Read-only probes (`command` that only reads, `uri`, `stat`) should
+  carry `check_mode: false` so the gate runs during `--check` too. Gating the assert on
+  `not ansible_check_mode` instead produces an approval preview that verifies nothing, which is the
+  failure this whole ladder exists to prevent. Keep the `is skipped` test in `that:` as well: it
+  costs nothing and it is what catches a probe that could not run for some other reason
+- **`in` on `.stdout` is a SUBSTRING test — use `.stdout_lines`.** A script reporting `CHANGED` /
+  `UNCHANGED` and a task written `changed_when: "'CHANGED' in result.stdout"` reports **changed on
+  every run, forever**, because `'CHANGED' in 'UNCHANGED'` is true. The idempotency proof then
+  becomes unobtainable and the cause is invisible. `.stdout_lines` is a list, so `in` is an exact
+  element match. Measured on a real run; the same file had already documented the trap in a comment
+  and still carried a third instance of it
+- **A `notify` fires only in the run that changes the file — so a suppressed restart is forgotten.**
+  Once a gated handler declines to restart, every later run sees a converged file, notifies nothing,
+  and the service goes on using the old configuration with no record that a restart is owed.
+  Re-derive the condition every run instead: compare what is on disk against what the process is
+  actually running (for a container, `docker inspect -f '{{range .Config.Env}}...'`). Do **not** use
+  mtime — a generator that rewrites the file unconditionally advances mtime on every run, so an
+  mtime comparison reports "stale" forever
+- **Handlers flush at the END of the play, i.e. AFTER your verification role.** A gate that runs as
+  the last `role:` therefore certifies the state the pending restart is about to replace. Put
+  `meta: flush_handlers` in `tasks:` and move the gate to `post_tasks:` so it measures what the run
+  actually leaves behind
 - **Enforce the same checks in CI** (`.github/workflows/ansible-scan.yml`) on every PR touching
   Ansible paths — the local gate alone is not enough
 - **A gate never skips because its tool is missing — it installs the tool and runs.**
