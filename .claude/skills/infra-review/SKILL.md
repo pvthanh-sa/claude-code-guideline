@@ -105,6 +105,14 @@ stage fit in a session that does not have 700k tokens.
 > emitting a report that says a Critical went away. Feed `priorFindings` from the partial-state file
 > and the labels are correct again.
 
+> **A deferred source reports 0 findings, which reads exactly like a clean one.** Measured: a
+> `--only ansible` run returned `findingsBySource: {ansible: 21, security: 0, infra: 0}` and was
+> summarised as *"security and infra returned zero"* — a sentence a reader takes as a clean
+> Terraform side of a repo carrying ~18 modules that nobody had looked at. The workflow now returns
+> **`deferredSources`**, computed in code rather than inferred from the counts, and a partial run may
+> never come back `"go"`. **When writing the report, put the deferred list in the first line**, and
+> treat every `0` in `findingsBySource` as UNEXAMINED unless that source is in `ranSources`.
+
 **Resuming a review that ran out of budget — do this BEFORE anything else.**
 
 A four-reviewer pass over a mixed repo costs roughly **700k output tokens**, which is more than one

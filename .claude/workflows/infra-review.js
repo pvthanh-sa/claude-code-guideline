@@ -79,6 +79,21 @@ const preflight = await agent(
 )
 const HAS_TF = !!(preflight && preflight.tfFiles > 0)
 const HAS_ANSIBLE = !!(preflight && preflight.ansibleFiles > 0)
+
+// Which reviewers this run will NOT consult. Derived from the same stack flags the roster is built
+// from, plus cost -- the roster loop omits cost because it runs on its own schedule, and a deferred
+// cost reviewer is why estimatedMonthlySavingsUsd can read 0 on a stack with real savings.
+//
+// Declared HERE, next to the flags it depends on, because BOTH return paths need it: a run can be
+// partial by intent (args.only) and ALSO lose a reviewer mid-run, and the incomplete branch returns
+// long before synthesis.
+//
+// This is the only thing in the output separating "reviewed and clean" from "never looked", so it
+// is computed rather than inferred by the synthesiser from a zero count.
+const DEFERRED = ONLY.length
+  ? ['security', ...(HAS_TF ? ['infra'] : []), ...(HAS_ANSIBLE ? ['ansible'] : []), ...(HAS_TF ? ['cost'] : [])]
+      .filter((s) => !ONLY.includes(s))
+  : []
 if (!HAS_TF && !HAS_ANSIBLE) {
   log(`ABORT: no Terraform and no Ansible under '${target}' — wrong target? Pass the directory explicitly.`)
   return {
@@ -220,6 +235,12 @@ const REPORT = {
           security: { type: 'number' }, infra: { type: 'number' }, ansible: { type: 'number' },
         },
       },
+      // A 0 in findingsBySource is ambiguous on its own: it reads identically for "ran, found
+      // nothing" and "never ran". Measured -- a partial run reporting ansible: 21, security: 0,
+      // infra: 0 was summarised as "security and infra returned zero", which is the sentence a
+      // reader takes as a clean Terraform side. The caller overwrites this field from code after
+      // synthesis, so it states which reviewers were not consulted regardless of the model.
+      deferredSources: { type: 'array', items: { type: 'string' } },
     // Count of security findings per Well-Architected Security Pillar category.
     waSecurityCounts: {
       type: 'object',
@@ -443,8 +464,10 @@ if (incomplete.size) {
   }
   log(`INCOMPLETE: reviewer(s) did not run: ${which} — counted ${partial.critical} critical / ${partial.high} high from the reviewers that did.`)
   return {
+    deferredSources: DEFERRED,
     recommendation: partial.critical > 0 ? 'no-go' : 'go-with-fixes',
-    summary: `INCOMPLETE REVIEW — reviewer(s) that NEVER ran: ${which}. ` +
+    summary: `INCOMPLETE REVIEW — reviewer(s) that NEVER ran: ${which}.` +
+      (DEFERRED.length ? ` Separately DEFERRED by args.only (not a failure): ${DEFERRED.join(', ')}.` : '') + ` ` +
       `They produced nothing in any round. agent() returns null for BOTH causes and cannot tell them ` +
       `apart, so check which one this was before acting: the task notification's <failures> block and ` +
       `/workflows print the real error. ` +
@@ -539,6 +562,17 @@ const noteNote = NOTE
     `summary with one line stating what the operator changed + whether the review found any issue ` +
     `introduced by it.`
   : ''
+
+const deferredNote = DEFERRED.length
+  ? `\n\nNOT REVIEWED THIS RUN: ${DEFERRED.join(', ')}. These reviewers were deliberately deferred to ` +
+    `a later session to fit the token budget; they did not run and found nothing because they did not ` +
+    `look. Their 0 in findingsBySource means UNEXAMINED. Do NOT write that they "returned zero", ` +
+    `"found no issues", or that their part of the stack is clean. State plainly in the FIRST line of ` +
+    `the summary that this is a PARTIAL review covering only ${(ONLY || []).join(', ')}, and that a ` +
+    `go/no-go over the whole target is not available from it. Never set recommendation to "go" on a ` +
+    `partial run: the most a partial run can support is "go-with-fixes" for what WAS examined.\n\n`
+  : ''
+
 const report = await agent(
   `Merge this review of "${target}" into ONE report. Findings are already deduped; rank by ` +
   `severity, count by severity, sum estimated monthly savings from COST, and give a go/no-go ` +
@@ -554,6 +588,7 @@ const report = await agent(
     `what you kept. EVERY source present in the input must appear in topFindings: if the cap forces a ` +
     `choice, drop the lowest-severity items ACROSS sources, never a whole source. A reviewer that ran ` +
     `and contributed nothing to topFindings is indistinguishable from one that never ran at all.\n\n` +
+  deferredNote +
   `The target's stack is: ${STACK} (${stackNoun}). Say so in the summary so the reader knows which ` +
   `reviewers ran${HAS_TF ? '' : ' — cost analysis is Terraform-only and did not run for this target'}.\n\n` +
   `FINDINGS (deduped over ${DEEP ? 'multiple rounds' : '1 round'}, source ∈ security|infra|ansible):\n${JSON.stringify(findings)}\n\n` +
@@ -564,4 +599,7 @@ const report = await agent(
   // Same reason as the incomplete branch: the caller persists the RAW set so a later partial run can
   // resume from it. The synthesised report is for humans and is lossy by design -- feeding it back as
   // priorFindings would silently drop everything the cap removed.
-  return { ...(report || {}), allFindings: findings, ranSources: [...everRan] }
+  //
+  // deferredSources is set from code, not taken from the model: which reviewers ran is a fact this
+  // script knows exactly, and it is the fact that decides whether the report may be read as complete.
+  return { ...(report || {}), deferredSources: DEFERRED, allFindings: findings, ranSources: [...everRan] }
