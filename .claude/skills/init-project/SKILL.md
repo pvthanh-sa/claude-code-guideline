@@ -1,9 +1,9 @@
 ---
 name: init-project
-description: 'Initialize or refresh Claude Code Core for the current project. Init mode analyzes project structure and README (for CI/CD tech), generates CLAUDE.md, selectively copies relevant skills/agents/rules, and creates a project-specific .mcp.json. Sync mode (--sync) refreshes already-installed skills/agents/rules from the guideline repo in place.'
+description: 'Initialize or refresh Claude Code Core for the current project. Init mode analyzes project structure and README (for CI/CD tech), generates CLAUDE.md, selectively copies relevant skills/agents/rules, and creates a project-specific .mcp.json. Sync mode (--sync) refreshes already-installed skills/agents/rules from the guideline repo in place. Add mode (--add <stack>) installs one stack's files into a project that was initialized before that stack existed, creating only what is absent and never touching CLAUDE.md.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, Write
-argument-hint: '[output-path] | --sync'
+argument-hint: '[output-path] | --sync | --add <stack>'
 ---
 
 # Init Project — Full Claude Code Core Setup
@@ -26,7 +26,19 @@ Inspect `$ARGUMENTS` first and pick exactly one mode:
   ignore Phases 1–6. Sync **refreshes in place** the skills/agents/rules that are already
   installed under `.claude/`, pulling the latest copy from the guideline repo. It never
   touches `CLAUDE.md`, `.mcp.json`, or `settings.json`, and never adds new files.
-- **Init mode** (default — anything that is not `--sync`) — run the full 6-phase bootstrap below.
+- **Add mode** — if `$ARGUMENTS` contains `--add <stack>`: jump straight to the
+  [Add Mode](#add-mode--install-one-stack-into-an-already-initialized-project) section and
+  ignore Phases 1–6. Add installs the files for **one stack** that this project did not have at
+  init time. It only creates what is **absent** and never overwrites — refreshing is `--sync`'s
+  job, and keeping the two disjoint means neither can surprise you.
+- **Init mode** (default — anything that is not `--sync` or `--add`) — run the full 6-phase
+  bootstrap below.
+
+> The three modes answer three different questions: *"set this project up"* (init), *"pull the
+> latest version of what I already have"* (sync), *"I now use a stack I did not use before"* (add).
+> Before add mode existed the third question had no answer — `--sync` adds nothing, and a re-init
+> overwrites a customized `CLAUDE.md` — so it was handled by hand-copying, which reliably forgot
+> `settings.json`.
 
 **Output path for CLAUDE.md (init mode only):** the first non-flag token in `$ARGUMENTS` if
 provided (e.g. `docs/CLAUDE.md`), otherwise auto-detect:
@@ -520,26 +532,17 @@ but you can refresh them on demand.
 
 - ✅ Refreshes only files that **already exist** under `.claude/skills/`, `.claude/agents/`,
   `.claude/rules/` — overwriting them with the guideline version.
-- ❌ Never adds a skill/agent/rule that isn't already installed (to add new ones, re-run init
-  mode so the tech stack is re-detected).
+- ❌ Never adds a skill/agent/rule that isn't already installed — that is `--add <stack>`'s job,
+  which creates what is absent without touching `CLAUDE.md`.
 - ❌ Never touches `CLAUDE.md` (you may have customized it).
 - ❌ Never touches `.mcp.json` (gitignored, holds local secrets/placeholders).
 - ❌ Never touches `.claude/settings.json` (may hold project-local settings).
 
 > **Consequence, worth stating plainly: a NEW capability added to the guideline repo does not reach
 > an already-initialized project through `--sync`.** When a stack (say Ansible) gains a skill, agent
-> and rule, `--sync` refreshes none of them — they were never installed — and `settings.json` is
-> untouched by sync *and* by re-init (Phase 4 copies it only when absent), so new permissions and
-> hooks do not arrive either. Re-running init mode picks up the skills/agents/rules but **overwrites
-> `CLAUDE.md`**. For an existing project the honest path is a targeted copy:
->
-> ```bash
-> SK="$(readlink -f ~/.claude/skills/init-project)"; G="$(dirname "$(dirname "$SK")")"
-> cp -r "$G/skills/ansible-engineer" .claude/skills/
-> cp "$G/agents/ansible-reviewer.md" .claude/agents/
-> cp "$G/rules/ansible.md"           .claude/rules/
-> # then hand-merge the new allow/deny entries and hooks from "$G/settings.json"
-> ```
+> and rule, `--sync` refreshes none of them — they were never installed. Re-running init mode picks
+> them up but **overwrites `CLAUDE.md`**. That is what **`--add <stack>`** is for; use it instead of
+> either.
 >
 > The pipeline skills and reviewer agents are exempt — they are user-level symlinks (Guide §1.1), so
 > `/ansible-implement` and `ansible-reviewer` are live everywhere the moment they exist upstream.
@@ -619,3 +622,114 @@ Print a recap and the review/commit hint — **do not commit automatically**:
 
 CLAUDE.md, .mcp.json, and settings.json were intentionally left untouched.
 ```
+
+---
+
+## Add Mode — install ONE stack into an already-initialized project
+
+Triggered by `/init-project --add <stack>`. For a project that went through G2 **before** the
+guideline repo had this stack — the case `--sync` cannot serve (it adds nothing) and re-init
+serves badly (it overwrites a customized `CLAUDE.md`).
+
+Supported: `ansible` · `terraform` · `kubernetes` · `docker` · `postgres` · `monitoring`
+
+**Contract:**
+
+- ✅ Creates only what is **absent**. An existing file is left alone and reported as already
+  present — refreshing it is `--sync`'s job.
+- ❌ Never touches `CLAUDE.md`. The stack's section is yours to write; the summary tells you what
+  to add.
+- ⚠️ **`settings.json` is diffed, never merged.** This is the whole reason the mode exists rather
+  than a `cp` recipe: settings is untouched by `--sync` *and* by re-init (Phase 4 copies it only
+  when absent), so a hand-copy silently leaves the new stack's permissions and hooks behind. A
+  missing allow-entry does not fail loudly — the next run just asks for approval on something that
+  should have been pre-approved, which reads as noise rather than as a gap.
+
+### Step 1: Resolve the source and the stack
+
+```bash
+SK="$(readlink -f "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/init-project}" 2>/dev/null)"
+G="$(dirname "$(dirname "$SK")")"
+test -d "$G/skills" || { echo "ERROR: guideline source not found — is the skill symlinked? (Guide §1.1)"; exit 1; }
+
+STACK="<the token after --add, lowercased>"
+case "$STACK" in
+  ansible)    SKILLS="ansible-engineer";                    AGENTS="ansible-reviewer.md"; RULES="ansible.md" ;;
+  terraform)  SKILLS="terraform-engineer cloud-architect";  AGENTS="infra-reviewer.md";   RULES="terraform.md" ;;
+  kubernetes) SKILLS="kubernetes-specialist";               AGENTS="";                    RULES="kubernetes.md" ;;
+  docker)     SKILLS="";                                    AGENTS="";                    RULES="docker.md" ;;
+  postgres)   SKILLS="postgres-pro database-optimizer";     AGENTS="";                    RULES="" ;;
+  monitoring) SKILLS="monitoring-expert";                   AGENTS="";                    RULES="" ;;
+  # This table must stay identical to the detection table in knowledge/setup-new-project.md §3.
+  # Two mappings that drift apart is worse than one that is incomplete: `--add` would install a
+  # different set than init does for the same stack, and nothing would report the difference.
+  *) echo "ERROR: unknown stack '$STACK'. Supported: ansible terraform kubernetes docker postgres monitoring"; exit 2 ;;
+esac
+echo "Adding stack: $STACK"
+```
+
+### Step 2: Create what is absent
+
+```bash
+added=0; present=0; missing_upstream=0
+addx() {  # addx <source> <dest-path>
+  if [ -e "$2" ]; then echo "  already present: $2"; present=$((present+1)); return; fi
+  if [ ! -e "$1" ]; then echo "  WARN missing upstream: $1"; missing_upstream=$((missing_upstream+1)); return; fi
+  mkdir -p "$(dirname "$2")"; cp -r "$1" "$2"; echo "  added: $2"; added=$((added+1))
+}
+for s in $SKILLS; do addx "$G/skills/$s"  ".claude/skills/$s";  done
+for a in $AGENTS; do addx "$G/agents/$a"  ".claude/agents/$a";  done
+for r in $RULES;  do addx "$G/rules/$r"   ".claude/rules/$r";   done
+
+# security.md and security-auditor are not stack-specific, but a project initialized before the
+# G4 roster existed can be missing them -- and /infra-review REFUSES to emit "go" when a reviewer
+# did not run, so their absence makes the gate unpassable rather than merely weaker.
+addx "$G/rules/security.md"          ".claude/rules/security.md"
+addx "$G/agents/security-auditor.md" ".claude/agents/security-auditor.md"
+```
+
+### Step 3: Diff settings.json — report, never merge
+
+```bash
+python3 - "$G/.claude/settings.json" .claude/settings.json <<'PY'
+import json, sys, pathlib
+src, dst = (pathlib.Path(p) for p in sys.argv[1:3])
+if not src.exists():                       # guideline settings live one level up in some layouts
+    src = src.parent.parent / "settings.json"
+g = json.loads(src.read_text()) if src.exists() else {}
+l = json.loads(dst.read_text()) if dst.exists() else {}
+gp, lp = g.get("permissions", {}), l.get("permissions", {})
+for key in ("allow", "deny"):
+    miss = [e for e in gp.get(key, []) if e not in lp.get(key, [])]
+    print(f"  permissions.{key}: {len(miss)} entry(ies) in the guideline but not here")
+    for e in miss:
+        print(f"      {e}")
+gh, lh = set(g.get("hooks", {})), set(l.get("hooks", {}))
+print(f"  hooks present upstream and absent here: {sorted(gh - lh) or 'none'}")
+print("\n  NOT merged automatically -- settings.json may hold project-local choices, and a script")
+print("  cannot tell a deliberate omission from a missing one. Copy the lines you want.")
+PY
+```
+
+### Step 4: Summary — and the two things only a human can finish
+
+```
+## Stack added: <stack>
+
+### Files: N added · M already present  [· K missing upstream — investigate, do not ignore]
+   added: .claude/rules/<stack>.md, .claude/skills/<...>, .claude/agents/<...>
+
+### settings.json — NOT merged, listed above
+   Copy the allow/deny entries you want. Skipping this does not fail; it just means the next run
+   asks for approval on commands that should already be pre-approved.
+
+### CLAUDE.md — NOT modified
+   Add the stack to its "Stack" and "Skills Available" sections yourself. This file was left alone
+   on purpose: it is the one artifact you customized at G2.
+
+### If the stack has hosts to configure (Ansible), the spec needs §8.1
+   /ansible-implement (G3b) reads `docs/specs/<name>.spec.md` §8.1 as its source. A project whose
+   spec predates that section has nothing for G3b to read — add it, or re-run /spec-architect.
+```
+
+**Do not commit.** The operator reviews `git diff -- .claude/` and decides.

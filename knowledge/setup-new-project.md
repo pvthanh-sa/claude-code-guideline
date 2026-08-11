@@ -224,8 +224,11 @@ overwriting them in place. Then it prints `git diff --stat -- .claude/` so you c
 | | Touch `.mcp.json` (local secrets/placeholders) |
 | | Touch `.claude/settings.json` (project-local settings) |
 
-> To **add** a newly-relevant skill/agent (not just refresh existing ones), use a full re-run —
-> sync never introduces new files.
+> To **add** a newly-relevant skill/agent (not just refresh existing ones), use
+> **`/init-project --add <stack>`** — sync never introduces new files, and a full re-run would
+> overwrite the `CLAUDE.md` you customized at G2. Add mode creates only what is absent, leaves
+> `CLAUDE.md` alone, and **diffs `settings.json` instead of merging it** — that file is reached by
+> neither sync nor re-init, so its new permissions and hooks are what a hand-copy forgets.
 
 Review the diff (`git diff -- .claude/`), then commit whenever you choose — sync never auto-commits.
 
@@ -241,12 +244,17 @@ Review the diff (`git diff -- .claude/`), then commit whenever you choose — sy
   leaves `CLAUDE.md` untouched)
 - The change is small and doesn't affect the detected tech stack
 
-| | `--sync` | Full re-run |
-|---|---|---|
-| Re-detects tech stack | No | Yes |
-| Adds newly-relevant skills/agents | No | Yes |
-| Refreshes existing skills/agents/rules | Yes | Yes |
-| Overwrites `CLAUDE.md` | **No** | **Yes** |
+| | `--sync` | `--add <stack>` | Full re-run |
+|---|---|---|---|
+| Re-detects tech stack | No | No — you name the stack | Yes |
+| Adds newly-relevant skills/agents | No | **Yes**, for that stack | Yes |
+| Refreshes existing skills/agents/rules | Yes | No — leaves them alone | Yes |
+| Overwrites `CLAUDE.md` | **No** | **No** | **Yes** |
+| Reaches `settings.json` | No | Diffs it, prints what is missing | Only when absent |
+
+The last row is the one that decides between them on an existing project: a new stack's
+permissions and hooks arrive through **neither** `--sync` nor a re-run, so `--add` is the only mode
+that even tells you they are missing.
 | Touches `.mcp.json` / `settings.json` | No | Skips if they already exist |
 
 → For a one-off single-file update, you can still copy directly from

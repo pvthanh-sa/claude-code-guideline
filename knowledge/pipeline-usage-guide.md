@@ -512,6 +512,43 @@ the folder is almost empty, then run 6 phases: explore → analyze → CLAUDE.md
 > rule/MCP), **`--sync`** vs full re-run, and why it _copies rather than symlinks_ project content —
 > see [`setup-new-project.md`](setup-new-project.md) §3, §5, §6. This file only summarizes usage.
 
+#### The three modes — pick by the question you are asking
+
+| You want to… | Command | Touches `CLAUDE.md`? |
+|---|---|---|
+| Set a project up | `/init-project` | **yes — writes it** |
+| Pull the latest version of what you already have | `/init-project --sync` | no |
+| Start using a stack this project did not have at G2 | `/init-project --add <stack>` | no |
+
+`--add` takes one of `ansible · terraform · kubernetes · docker · postgres · monitoring`.
+
+```bash
+# A Terraform-only project that now needs host configuration:
+/init-project --add ansible
+```
+
+**Why a third mode rather than "just re-run init".** `--sync` refreshes only files that already
+exist, so a stack you never had reaches you through it **never**. Re-running init does install
+them — and **overwrites the `CLAUDE.md` you customized at G2**. Before `--add` existed, this was
+handled by hand-copying three paths, which worked and reliably forgot the fourth thing:
+
+> **`settings.json` is the one that bites.** It is untouched by `--sync`, and init copies it only
+> when absent — so on an existing project the new stack's permissions and hooks arrive by neither
+> route. Nothing fails loudly: the next run simply asks for approval on commands that should have
+> been pre-approved, which reads as noise rather than as a gap. Measured on a real project missing
+> Ansible: **25 allow entries and one `PostToolUse` hook**, the first several being `ansible-lint`.
+>
+> `--add` therefore **diffs and prints** settings rather than merging it — a script cannot tell a
+> deliberate project-local omission from a missing one, so the copy stays your decision.
+
+`--add` creates only what is **absent** (a second run adds nothing), and finishes by naming the two
+things only you can do: paste the settings entries you want, and add the stack to `CLAUDE.md`.
+
+> **If the stack is Ansible, the spec needs §8.1 too.** `/ansible-implement` (G3b) reads
+> `docs/specs/<name>.spec.md` §8.1 as its source; a spec written before that section existed gives
+> G3b nothing to read. `--add` says so in its summary. New projects are unaffected — `/spec-architect`
+> emits §8.1 whenever the stack has hosts.
+
 ### 3. Result
 
 ```
