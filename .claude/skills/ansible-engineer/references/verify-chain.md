@@ -247,6 +247,13 @@ molecule test                                  # full cycle, destroys at the end
   a scenario shells out to test a real playbook, pin both in the task's `environment:` or it runs
   against the scenario's configuration while appearing to test the repo's.
 
+- **Give the platforms a named group and target that, not `hosts: all`.** The CI targeting-safety
+  gate greps every playbook for `hosts: all` and does **not** special-case `molecule/` — a scenario
+  written the conventional way fails the PR. That is deliberate: a grep-based guard with exceptions
+  is one people learn to route around, and `groups: [<name>]` on the platform plus `hosts: <name>`
+  in converge/prepare/verify costs one line. Molecule's own create/destroy playbooks target
+  localhost and are unaffected.
+
 **And two that make a container lie rather than fail.**
 
 - **`sudo` can be broken in a base image** (PAM account management fails even as root). Ansible
