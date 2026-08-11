@@ -56,7 +56,29 @@ Run in order; stop at the first failure, fix, restart from the top.
 | 3 | `ansible-lint --profile production` | FQCN, unnamed tasks, missing `changed_when`, risky permissions | **blocking** |
 | 4 | `ansible-playbook site.yml --check --diff --limit <host>` | What would actually change; config drift | **blocking (review the diff)** |
 | 5 | run **for real** twice against one host | Idempotency — second run must report `changed=0` | **blocking** |
-| 6 | `molecule test` (roles) | Full create → converge → idempotence → verify → destroy | blocking for shared roles |
+| 6 | `molecule test` (roles) | Full create → converge → idempotence → verify → destroy | see below — **not enforced by `verify.sh`** |
+
+**Gate 6 is the one gate no script can enforce, and the table used to claim otherwise.** It read
+"blocking for shared roles" while `verify.sh` neither ran it nor mentioned it unless a scenario
+already existed — so a repo of shared roles with no scenario got silence, and silence reads as
+"nothing to do". `verify.sh` now emits a **WARN** when `roles/` exists and no `molecule/` does.
+
+WARN rather than FAIL, because plenty of roles genuinely cannot be container-tested and saying
+otherwise would train people to ignore the gate. Two honest outcomes, and picking one is the work:
+
+- **Add a scenario** — worth it for roles that configure the OS itself (packages, users, files,
+  services, firewall) and especially for **multi-OS branches**, where the container *is* the host
+  you do not otherwise have. A `platforms:` list runs the same role against Rocky and Ubuntu in
+  one command; that is the only cheap way to keep a Debian branch honest.
+- **Record why not, in the role's README** — a role that needs a cloud identity, a private
+  registry, or a live application to answer is not testable in a container. Mocking all of that
+  tests the mocks. Write that down; an unexplained absence is indistinguishable from an oversight.
+
+**Fidelity limits, so the result is not over-read.** A container shares the host kernel, so
+`sysctl` tunables often are not namespaced — the assertion either fails or, worse, passes against
+the *host's* value. systemd needs a systemd-enabled image running `privileged`, which is a real
+security trade-off. Neither makes molecule useless; both mean gate 6 narrows what gate 5 has to
+find, and never replaces it.
 
 ¹ **"Advisory" only as a standalone command.** `ansible-lint` embeds yamllint and reports its
 problems as `yaml[<rule>]` violations, reading your `.yamllint` when one exists — and under the
@@ -210,6 +232,37 @@ molecule idempotence                           # the assertion that matters most
 molecule verify                                # run verify.yml assertions
 molecule test                                  # full cycle, destroys at the end
 ```
+
+**Four things that stop a scenario before it tests anything. All measured on molecule 26.6.**
+
+- **`--driver-name` is gone** from `molecule init scenario`, and `molecule drivers` lists `docker`
+  only when `molecule-plugins[docker]` is installed. Check with `molecule drivers` first.
+- **`meta/main.yml` needs `namespace:` and `role_name:`.** ansible-compat runs before anything else
+  and derives the fully-qualified role name from the directory; without them it aborts with
+  `InvalidPrerequisiteError`. Nothing is published to Galaxy — the fields exist so the gate runs.
+- **molecule no longer puts the role's parent directory on the search path.** `include_role` then
+  fails with "not found" while printing a plausible-looking list that simply omits `roles/`. Set
+  `provisioner.env.ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..`.
+- **A nested `ansible-playbook` inherits molecule's `ANSIBLE_CONFIG` and `ANSIBLE_ROLES_PATH`.** If
+  a scenario shells out to test a real playbook, pin both in the task's `environment:` or it runs
+  against the scenario's configuration while appearing to test the repo's.
+
+**And two that make a container lie rather than fail.**
+
+- **`sudo` can be broken in a base image** (PAM account management fails even as root). Ansible
+  reports `Module result deserialization failed: No start of json char found`, because sudo writes
+  the real reason to stderr and the module emits no JSON at all. The visible error names the
+  symptom; `docker exec <c> sudo -n true` names the cause.
+- **A `prepare.yml` is the honest place for container-only repairs** — package caches, sudo, stale
+  repo metadata. Keep it to things a managed host genuinely supplies. If a fix ever has to move
+  from `prepare.yml` into the role, that is a finding about the role.
+
+**What a multi-OS scenario is actually for.** `platforms:` runs the identical role against Rocky and
+Ubuntu in one command, which is the only cheap way to keep a second OS branch honest — a branch
+written without a host to run it on is how most of them ship with a bug. It cuts both ways: on the
+first real run of `fleet_web_witness` the *unproven* Debian branch passed and the *proven* RedHat
+one failed, because its SELinux handler branched on `os_family == 'RedHat'` instead of on whether
+SELinux is enforcing, and `restorecon` does not exist on a host with SELinux off.
 
 > **Check the driver against your installed molecule version before copying any tutorial.** The
 > docker driver was moved out of molecule core into the separate `molecule-plugins[docker]` package,

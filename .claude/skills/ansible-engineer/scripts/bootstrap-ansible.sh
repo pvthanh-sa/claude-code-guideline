@@ -143,7 +143,18 @@ if [ "$ENSURE" -eq 1 ]; then
 
   if [ "${#NEED_PKGS[@]}" -eq 0 ] && [ "${#NEED_COLS[@]}" -eq 0 ]; then
     head2 "Ensure — nothing to do"
-    say "  Every gate prerequisite is already present."
+    say "  Every BLOCKING gate prerequisite is present."
+    # Say what --ensure deliberately did not install. Printing "nothing to do" directly under a
+    # state table that reads "molecule MISSING" is how a reader concludes the toolchain is
+    # complete when gate 6 has no tool at all.
+    if ! have molecule; then
+      say ""
+      say "  NOT installed by --ensure: molecule (verify-chain gate 6, role testing in a container)."
+      say "  It is excluded on purpose -- it is not a blocking gate and it needs docker. If you"
+      say "  want gate 6, install it explicitly:"
+      say "    pip3 install 'molecule>=25.0,<27.0' 'molecule-plugins[docker]'"
+      say "    pyenv rehash    # if pyenv is in use, or the console script stays invisible"
+    fi
     exit 0
   fi
 

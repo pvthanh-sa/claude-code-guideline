@@ -205,9 +205,23 @@ fi
 
 # Molecule and the idempotency re-run are NOT gates here -- they need a live target or a
 # container and must be run deliberately. Point at them instead of faking a result.
+#
+# Report on molecule whether or not a scenario exists. Speaking only when one is already
+# present means a repo of shared roles with NO scenario gets total silence, and silence reads
+# as "nothing to do" -- which is how an untested role ships. Absence is the finding worth
+# naming; it is a WARN and not a FAIL because plenty of roles legitimately cannot be
+# container-tested (anything needing a cloud identity, a real registry, or a live service).
 printf '\n-- next (not run by this script)\n'
-if have molecule && [ -n "$(find . -type d -name molecule -print -quit)" ]; then
-  printf '   molecule scenario found: run "molecule test" inside the role dir\n'
+_roledirs="$(find . -type d -name roles -not -path '*/molecule/*' -print -quit)"
+_scenarios="$(find . -type d -name molecule -print -quit)"
+if [ -n "$_scenarios" ]; then
+  if have molecule; then
+    printf '   molecule scenario found: run "molecule test" inside the role dir\n'
+  else
+    result WARN 'molecule' 'scenario exists but molecule is not installed — the role tree ships an untested gate'
+  fi
+elif [ -n "$_roledirs" ]; then
+  result WARN 'molecule' "roles/ present, no molecule scenario — role-level idempotency is unproven off-host. Add one, or record in the role's README that it cannot be container-tested and why"
 fi
 [ -n "$LIMIT" ] && printf '   idempotency proof: run the playbook FOR REAL twice against %s;\n                      the second run must report changed=0 (check mode cannot prove this)\n' "$LIMIT"
 
