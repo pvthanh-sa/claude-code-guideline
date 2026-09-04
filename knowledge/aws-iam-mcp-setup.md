@@ -410,11 +410,14 @@ aws sso-admin put-inline-policy-to-permission-set --region $REGION --profile $AD
   --inline-policy file://iam/claude-mcp-boundary.json
 
 # 4. Resolve your Identity Center user ID
+#    NOTE: --alternate-identifier must be JSON. The shorthand form
+#    "UniqueAttribute={AttributePath=userName,AttributeValue=$SSO_USER}" fails on
+#    aws-cli 2.x with: "Shorthand syntax does not support document types."
 USER_ID=$(aws identitystore get-user-id --region $REGION --profile $ADMIN \
   --identity-store-id "$IDENTITY_STORE_ID" \
-  --alternate-identifier "UniqueAttribute={AttributePath=userName,AttributeValue=$SSO_USER}" \
+  --alternate-identifier '{"UniqueAttribute":{"AttributePath":"userName","AttributeValue":"'"$SSO_USER"'"}}' \
   --query 'UserId' --output text)
-# Fallback if the above errors:
+# Fallback (also handy to eyeball every user in the store):
 # USER_ID=$(aws identitystore list-users --region $REGION --profile $ADMIN \
 #   --identity-store-id "$IDENTITY_STORE_ID" \
 #   --query "Users[?UserName=='$SSO_USER'].UserId | [0]" --output text)
