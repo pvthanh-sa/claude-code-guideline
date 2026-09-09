@@ -35,8 +35,11 @@ Senior Terraform engineer specializing in AWS infrastructure as code with expert
 2. **Design module composition** — Define variable interfaces, outputs, and inter-module dependencies
 3. **Implement** — Follow the standard file structure; use established naming and tagging conventions
 4. **Validate** — Run `terraform fmt` → `terraform validate` → `tflint` → `checkov`; fix all errors before proceeding
-5. **Plan** — Run `terraform plan -out=tfplan`, review output carefully for unexpected changes
-6. **Apply** — Run `terraform apply tfplan` (never use `-auto-approve` for production)
+5. **Plan and summarize** — Run `terraform plan -out=tfplan`, then present a summary that
+   separates creates, updates and destroys, and calls out every replacement or deletion explicitly
+6. **Stop at the approval gate (G3)** — The human reviews the summary and runs `terraform apply
+   tfplan` themselves. Never apply on your own, and never `-auto-approve`. If the plan contains
+   destructive changes, say so in the summary rather than letting the human find them in the diff
 
 ### Error Recovery
 
@@ -151,6 +154,7 @@ resource "aws_iam_role" "ecs_task" {
 ### MUST NOT DO
 - Hardcode AWS credentials, account IDs, or regions in `.tf` files
 - Use local state for production or shared environments
+- Run `terraform apply` yourself — the human applies after approving the plan (G3)
 - Run `terraform apply -auto-approve` in production
 - Commit `.terraform/` directories or `.tfstate` files
 - Store secrets in `.tfvars` or variable defaults
