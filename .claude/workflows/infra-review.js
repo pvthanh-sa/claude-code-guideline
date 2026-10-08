@@ -136,6 +136,9 @@ const FINDINGS = {
           // True when the finding matches a risk explicitly accepted in the repo's spec
           // (docs/specs/*.spec.md "Accepted risks" section) — reported, but not gate-blocking.
           acceptedRisk: { type: 'boolean' },
+          // True when the subject is NOT owned by this stack (a pre-existing account-level object
+          // this code neither declares nor creates) — reported for escalation, but not gate-blocking.
+          outOfScope: { type: 'boolean' },
         },
       },
     },
@@ -182,6 +185,7 @@ const BASELINE_SCHEMA = {
           title: { type: 'string' },
           location: { type: 'string' },
           acceptedRisk: { type: 'boolean' },
+          outOfScope: { type: 'boolean' },
         },
       },
     },
@@ -225,6 +229,9 @@ const REPORT = {
     mustFixBeforeApply: { type: 'array', items: { type: 'string' } },
     // Findings that match spec-documented accepted risks: listed for re-validation, not blocking.
     acceptedRisks: { type: 'array', items: { type: 'string' } },
+    // Findings about objects this stack does not own: listed so the human can escalate them to
+    // whoever does own them. Never blocking — this repo cannot fix them.
+    outOfScopeFindings: { type: 'array', items: { type: 'string' } },
       // Findings contributed by EACH reviewer that ran. Required, because the failure this guards
       // against is silent: a report can list 50 findings and look complete while an entire
       // reviewer's output is missing. A per-source tally makes "ansible: 0" impossible to miss on
@@ -285,6 +292,20 @@ const acceptedRiskNote =
   `cites the spec section and its stated before-production precondition. Only mark a finding ` +
   `accepted on an explicit documented match — never infer acceptance from code comments alone.`
 
+// A review of one stack must not become an audit of the whole AWS account. In a shared account
+// every project would otherwise re-discover the same org-wide problems forever, and a pre-existing
+// issue nobody here can fix would no-go a gate it has nothing to do with.
+const scopeNote =
+  ` SCOPE: you are reviewing the stack under "${target}" — what its code declares, what it creates, ` +
+  `and its own configuration. Pre-existing account-level objects this stack neither declares nor ` +
+  `creates (other teams' IAM users/roles/policies, unrelated VPCs or buckets, org-wide settings) are ` +
+  `OUT OF SCOPE. If one is genuinely relevant because this stack DEPENDS on it, still report it — but ` +
+  `set "outOfScope": true and name in the remediation who owns it and why this repo cannot fix it, so ` +
+  `it is escalated rather than counted against this gate. IMPORTANT: when the real defect is that ` +
+  `this repo ASSERTS something untrue about the surrounding account, that IS in scope — report it ` +
+  `against the file making the claim (spec, README, comment), citing the external fact only as ` +
+  `evidence. Judge scope by ownership, not by whether you can reach the resource with an API call.`
+
 // Ansible widens the security surface: plaintext secrets in group_vars, an unencrypted vault,
 // a disabled host_key_checking, and blast radius are all security findings a Terraform-shaped
 // prompt would never look for.
@@ -304,7 +325,7 @@ const secPrompt = (round) =>
   `category in "waCategory": iam (identity & access) | detective-controls (logging/monitoring/audit, ` +
   `e.g. CloudTrail, Config, flow logs) | infrastructure-protection (network/SG/WAF/boundaries) | ` +
   `data-protection (encryption, secrets, key mgmt) | incident-response (recoverability, alarms, runbooks).` +
-  acceptedRiskNote +
+  acceptedRiskNote + scopeNote +
   (round > 1 ? ` This is review ROUND ${round}: surface only LESS-obvious issues not caught earlier — edge cases, cross-cutting and second-order risks.` : '') +
   noteFocus
 
@@ -313,7 +334,7 @@ const infraPrompt = (round) =>
   `(\${var.app_name}-resource-type), tagging (merge(var.tags,...)), variable descriptions/` +
   `validation, provider pinning, for_each vs count, lifecycle, AND wasted resources (oversized ` +
   `instances, redundant NAT, missing lifecycle policies). Report every finding with severity and file:line.` +
-  acceptedRiskNote +
+  acceptedRiskNote + scopeNote +
   (round > 1 ? ` This is review ROUND ${round}: surface only issues not already obvious — subtle or cross-module ones.` : '') +
   noteFocus
 
@@ -332,7 +353,7 @@ const ansiblePrompt = (round) =>
   `groups), and structure (FQCN, role-prefixed vars, defaults vs vars, pinned collections). ` +
   `Report every finding with severity, file:line location, risk, and remediation. NEVER run a ` +
   `playbook — read only.` +
-  acceptedRiskNote +
+  acceptedRiskNote + scopeNote +
   (round > 1 ? ` This is review ROUND ${round}: surface only issues not already obvious — subtle, cross-role, or second-order ones.` : '') +
   noteFocus
 
@@ -340,7 +361,7 @@ const costPrompt =
   `You are analyzing the Terraform infrastructure under "${target}" for cost optimization. ` +
   `Inspect instance classes, NAT strategy, desired counts/autoscaling, log retention, storage ` +
   `tiers/lifecycle, caching, and reserved-capacity opportunities. Give concrete actions with ` +
-  `estimated monthly savings (USD) and risk.` +
+  `estimated monthly savings (USD) and risk.` + scopeNote +
   noteFocus
 
 // ---- Phase 1: review (single pass, or loop-until-dry when deep) ----------------
@@ -458,7 +479,7 @@ if (incomplete.size) {
   // clear an apply, but it must not soften a finding it did produce either.
   const partial = { critical: 0, high: 0, medium: 0, low: 0 }
   for (const f of findings) {
-    if (f.acceptedRisk) continue
+    if (f.acceptedRisk || f.outOfScope) continue
     const k = (f.severity || '').toLowerCase()
     if (k in partial) partial[k]++
   }
@@ -495,7 +516,7 @@ if (incomplete.size) {
     mustFixBeforeApply: [
       `Restore missing reviewer agent(s): ${which}, then re-run /infra-review`,
       ...findings
-        .filter((f) => !f.acceptedRisk && ['critical', 'high'].includes((f.severity || '').toLowerCase()))
+        .filter((f) => !f.acceptedRisk && !f.outOfScope && ['critical', 'high'].includes((f.severity || '').toLowerCase()))
         .map((f) => `[${f.severity}] ${f.title} — ${f.location}`),
     ],
   }
@@ -535,7 +556,7 @@ if (BASELINE && !BASELINE_DISABLED) {
     `Read the prior infra-review report file at "${BASELINE}". If it does not exist or can't be read, ` +
     `return {"found": false}. If it exists, return found:true, baselineDate (from the filename or the ` +
     `report's header/date), priorRecommendation, and priorFindings: every finding it lists (top findings, ` +
-    `must-fix, AND accepted-risks) as {severity,title,location,acceptedRisk}. Only PARSE the report file — ` +
+    `must-fix, AND accepted-risks) as {severity,title,location,acceptedRisk,outOfScope}. Only PARSE the report file — ` +
     `do NOT inspect the current Terraform.`,
     { label: 'baseline', model: 'haiku', phase: 'Synthesize', schema: BASELINE_SCHEMA }
   )
@@ -580,7 +601,11 @@ const report = await agent(
   `Findings with "acceptedRisk": true are EXCLUDED from the severity counts, the go/no-go ` +
   `decision, and mustFixBeforeApply — instead list each in "acceptedRisks" as ` +
   `"<title> — accepted in spec; before prod: <precondition>" so the human re-validates the ` +
-  `acceptance (and mention the accepted count in the summary). Put the remaining ` +
+  `acceptance (and mention the accepted count in the summary). ` +
+  `Findings with "outOfScope": true are EXCLUDED the same way — never let one set recommendation to ` +
+  `"no-go", whatever its severity. List each in "outOfScopeFindings" as ` +
+  `"<title> — owned outside this stack: <owner/where it lives>; escalate, not fixable here" and state ` +
+  `the out-of-scope count in the summary. Put the remaining ` +
   `Critical/High items in mustFixBeforeApply. Set each topFindings.source from the finding's "source" field, ` +
   `and carry over each security finding's "waCategory". Also tally security findings per ` +
   `Well-Architected Security category into waSecurityCounts so the human sees coverage across the pillar.\n\n` +

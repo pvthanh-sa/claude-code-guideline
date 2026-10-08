@@ -170,6 +170,19 @@ for it, and its findings arrive via `priorFindings`.
 > re-validation). Rule of thumb — **baseline = "what changed since last run"; spec Accepted-risks =
 > "what we chose to live with."** Use both.
 
+> **Scope — review the stack, not the account.** The target is the stack under the review directory:
+> what its code declares, what it creates, and its own configuration. A pre-existing account-level
+> object this stack neither declares nor creates — another team's IAM user, an unrelated VPC, an
+> org-wide setting — is **out of scope**. In a shared account, reviewing those would make every
+> project re-discover the same account-wide issues forever, and would no-go a gate over something the
+> repo cannot fix. Report one only when this stack genuinely *depends* on it, tagged
+> `outOfScope: true`: it is then listed under **Out of scope** for the human to escalate, and excluded
+> from the counts and the go/no-go exactly like an accepted risk. **The exception that stays in
+> scope:** when the repo *asserts* something untrue about its surroundings — a spec claiming "IAM
+> already restricts this" when it does not — the false assertion is an in-scope finding against the
+> file that makes it; the external fact is the *evidence*, not the finding. Judge scope by
+> **ownership**, not by what a read-only API call happens to reach.
+
 ---
 
 ## Phase 0: Check the workflow script before spending tokens on it
@@ -305,7 +318,7 @@ _Saved: docs/reviews/<env>-<date>.md_
 ### Recommendation: GO | GO-WITH-FIXES | NO-GO
 [summary, 2-4 lines]
 
-### Severity:  Critical X · High Y · Medium Z · Low W
+### Severity:  Critical X · High Y · Medium Z · Low W   (accepted-risk and out-of-scope findings excluded)
 ### Security coverage (Well-Architected Security Pillar): IAM a · Detective b · Infra-protection c · Data-protection d · Incident-response e
 ### Changes this round (only when `--note` was given): <what the operator changed — from changeNote>
 ### Change since last review (only when a baseline was used): N resolved · K new · M still-open — regression: yes/no
@@ -321,6 +334,14 @@ _Saved: docs/reviews/<env>-<date>.md_
 
 ### Resolved since last review (only with a baseline — from changeSinceBaseline.resolved):
 - [severity] title — location  ✓ no longer found
+...
+
+### Accepted risks (documented in the spec — re-validated, not blocking — from acceptedRisks):
+- title — accepted in spec; before prod: <precondition>
+...
+
+### Out of scope (owned outside this stack — escalate, not fixable here — from outOfScopeFindings):
+- title — owner / where it lives
 ...
 
 ### Top cost-saving recommendations:
