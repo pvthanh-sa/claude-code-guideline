@@ -97,7 +97,7 @@ The human is the driver; Claude is the co-pilot. No stage runs `terraform apply`
 Type `/` to see all available skills:
 - **Pipeline:** spec-architect, init-project, iac-implement, ansible-implement, infra-review, infra-document, secret-scan
 - **Infrastructure:** terraform-engineer, ansible-engineer, kubernetes-specialist, postgres-pro, cloud-architect, database-optimizer
-- **DevOps:** devops-engineer, monitoring-expert, sre-engineer, chaos-engineer, cli-developer
+- **DevOps:** devops-engineer, monitoring-expert, sre-engineer, chaos-engineer, cli-developer, lb-keepalive
 - **Security:** secure-code-guardian, security-reviewer
 
 ## When to Use Plan Mode

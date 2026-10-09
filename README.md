@@ -43,6 +43,7 @@ Domain skills, on top of the seven pipeline stages below. Simply type `/` in Cla
 11. `chaos-engineer`: Infrastructure chaos design, game days.
 12. `cli-developer`: Internal tooling (Go/Node/Python CLIs).
 13. `secure-code-guardian`: OWASP prevention.
+14. `lb-keepalive`: **(Custom)** Aligns keep-alive / idle timeouts across CDN → LB → proxy → app → outbound clients (the intermittent-502 race), any runtime, with a language-agnostic check script.
 
 ---
 
