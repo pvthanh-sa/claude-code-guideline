@@ -1,6 +1,6 @@
 ---
 name: resume-cutoff
-description: 'Pick up work after a session was cut off mid-task — usage limit reached, context exhausted, crash, or a closed terminal. Re-establishes what was actually finished from artifacts rather than from the conversation summary, checks whether any non-idempotent side effect already fired, reports, and only then continues the unfinished part. Use at the start of any session that resumes interrupted work.'
+description: 'Pick up work after a session was cut off mid-task — usage limit reached, context exhausted, crash, or a closed terminal. Re-establishes what was actually finished from artifacts rather than from the conversation summary, checks whether any non-idempotent side effect already fired, reports briefly, and then continues the unfinished part automatically without asking for confirmation. Use at the start of any session that resumes interrupted work.'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash
 argument-hint: '[what was being worked on, if known]'
@@ -15,7 +15,9 @@ between the decision and the write. Half-finished work that is assumed finished 
 failure mode this skill exists to prevent, and the second one is repeating a side
 effect that already fired.
 
-**Do not resume the task yet.** Establish the state, report it, and wait.
+**Establish the state first, then continue on your own.** Verify, report in a few lines,
+and go straight into the unfinished work in the same turn. Never end the turn with
+"shall I continue?" — the user invoked this skill precisely to have the work resumed.
 
 ## 1. Ground truth, from artifacts only
 
@@ -63,7 +65,7 @@ damage. Before redoing any step, check whether its effect is already out there:
 A duplicate comment or a second PR is worse than an unfinished task, because the
 unfinished task is still visible while the duplicate has to be found and cleaned up.
 
-## 3. Classify and report — then stop
+## 3. Classify and report — then keep going
 
 Report every item in the interrupted work as exactly one of:
 
@@ -74,16 +76,28 @@ Report every item in the interrupted work as exactly one of:
 - **Unknown** — could not be determined. Say so rather than guessing; an unknown that is
   announced costs a question, an unknown that is assumed costs a defect.
 
-Include what was found in step 2. Then **wait for a decision** before continuing.
+Include what was found in step 2. Keep the report short, and do **not** wait for a
+reply: proceed directly to step 4.
 
-## 4. Resume
+The only reasons to pause are the ones where continuing would cause damage:
+
+- A side effect from step 2 whose state **cannot be verified** and whose repeat is
+  harmful (a second PR, message, payment). Skip that one step, flag it, and carry on
+  with everything else.
+- A partially applied change that is inconsistent and has no clearly safe forward path.
+  Ask only about that, not about the rest of the task.
+
+Uncertainty about the *rest* of the task is not a reason to pause.
+
+## 4. Resume (automatically)
 
 Only the unfinished part. Do not re-run a completed step "to be safe" — re-running is
 not free where it writes files, applies migrations, or calls anything external. Do not
 rewrite a file that already has the right content.
 
-If a partially applied change turns out to be inconsistent, say so and propose either
-finishing it forward or reverting cleanly — do not silently patch over it.
+If a partially applied change turns out to be inconsistent, say so, then choose the
+safer of finishing it forward or reverting cleanly and proceed — do not silently patch
+over it.
 
 ## Anti-patterns
 
@@ -91,3 +105,4 @@ finishing it forward or reverting cleanly — do not silently patch over it.
 - Starting the task over from the beginning because that feels safer.
 - Re-posting, re-pushing or re-sending because it is unclear whether it went through.
 - Reporting "resumed and continued" without saying what state things were found in.
+- Ending the turn with "do you want me to continue?" after the state report.

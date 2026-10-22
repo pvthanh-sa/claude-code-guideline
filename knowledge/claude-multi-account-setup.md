@@ -57,7 +57,14 @@ account. Rename freely (the bundle filenames and aliases must match).
    account; paste the returned auth code back into the CLI).
 7. **After editing `~/.bash_aliases`, open a NEW terminal** (functions/aliases only load in a
    fresh shell).
-8. **Policy:** swapping another person's OAuth token is credential sharing — only reasonable
+8. **Never `/login` a NEW account inside a running session.** The switch identifies the
+   outgoing account by matching the live email to a bundle. A login that matches no bundle is
+   saved nowhere, so the next switch overwrites its token and it is gone — Claude's own
+   `~/.claude/backups/` hold `~/.claude.json` (identity only), never the token, and an OAuth
+   authorization code is single-use and PKCE-bound, so it cannot be replayed. Recovery is a
+   fresh `/login`. Add accounts with `__claude_add <name>` (throwaway config dir); the switch
+   now refuses to run while the live login has no bundle.
+9. **Policy:** swapping another person's OAuth token is credential sharing — only reasonable
    when both accounts are in the **same Team** and you accept the risk. Anthropic's sanctioned
    model is each person running their own `/login`. This is a user decision.
 
@@ -76,23 +83,22 @@ cp ~/.claude.json ~/.claude.json.bak-multiacct                       # back up t
 cp ~/.claude/.credentials.json ~/.claude/.accounts/acc1.credentials.json
 jq '.oauthAccount' ~/.claude.json > ~/.claude/.accounts/acc1.oauthAccount.json
 
-# --- 3) Log in account #2 into a TEMP dir to capture its bundle (leaves account #1 untouched) ---
-mkdir -p ~/.claude-tmp
-CLAUDE_CONFIG_DIR=$HOME/.claude-tmp claude     # /login account #2 (paste auth-code if WARP blocks callback), then exit
-cp ~/.claude-tmp/.credentials.json ~/.claude/.accounts/acc2.credentials.json
-jq '.oauthAccount' ~/.claude-tmp/.claude.json > ~/.claude/.accounts/acc2.oauthAccount.json
-chmod 600 ~/.claude/.accounts/*.credentials.json
-rm -rf ~/.claude-tmp
-
-# --- 4) Install the switch function + aliases into ~/.bash_aliases (block below) ---
-# --- 5) Make sure ~/.bash_aliases is sourced (Mint does this by default; if not, add to
+# --- 3) Install the switch function + aliases into ~/.bash_aliases (block below) ---
+# --- 4) Make sure ~/.bash_aliases is sourced (Mint does this by default; if not, add to
 #         BOTH ~/.bashrc AND ~/.bash_profile):  if [ -f ~/.bash_aliases ]; then . ~/.bash_aliases; fi
-# --- 6) OPEN A NEW TERMINAL ---
+# --- 5) OPEN A NEW TERMINAL ---
+
+# --- 6) Add account #2 (logs in inside a throwaway dir — account #1 stays untouched) ---
+__claude_add acc2      # /login as account #2 (paste auth-code if WARP blocks callback), then /exit
+                       # prints: claude: saved 'acc2' = <email> — run: claude-acc2
+# Each further account: __claude_add <name>. The claude-<name> alias is generated from the
+# bundle — usable at once in this terminal, and in every terminal opened afterwards.
 ```
 
 ### Block to paste into `~/.bash_aliases`
 
-Rename `acc1`/`acc2` as you like — they must match the bundle filenames from steps 2/3.
+Aliases are generated from the bundle filenames (`acc1` → `claude-acc1`); rename a bundle's
+two files to rename its alias.
 
 ```bash
 # ===== Claude Code multi-account (single shared dir, swap login, auto-save) =====
@@ -145,6 +151,14 @@ __claude_switch() {
   # it -> "Login expired". (This broke opening a 2nd tab of the same account.)
   local cur; cur="$(__claude_current)"
   [ "$cur" = "$acc" ] && return 0
+  # BLOCK: the live login matches NO bundle (a new account was /login-ed inside a session).
+  # Switching would overwrite its token with nothing saving it first -> lost, needs /login.
+  local email; email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
+  if [ -z "$cur" ] && [ -n "$email" ] && __claude_bundle_ok "$HOME/.claude/.credentials.json"; then
+    echo "claude: live login '$email' has no bundle — switching would discard its token." >&2
+    echo "  Save it first:  __claude_save <name>   (then add: alias claude-<name>=...)" >&2
+    return 1
+  fi
   # BLOCK: refuse to switch to a DIFFERENT account while claude session(s) are running —
   # the swap would pull the shared credentials out from under them ("Login expired").
   local live; live="$(__claude_live_pids)"
@@ -167,8 +181,34 @@ __claude_switch() {
     mv -f "$tmp" "$HOME/.claude.json"
   else rm -f "$tmp"; echo "claude: patch identity failed" >&2; return 1; fi
 }
-alias claude-acc1='__claude_switch acc1 && env -u CLAUDE_CONFIG_DIR claude'
-alias claude-acc2='__claude_switch acc2 && env -u CLAUDE_CONFIG_DIR claude'
+__claude_add() {       # add/re-login an account in a throwaway dir; never touches the live login
+  local acc="$1" base="$HOME/.claude/.accounts" tmpdir
+  [[ "$acc" =~ ^[a-z0-9_-]+$ ]] || { echo "usage: __claude_add <name>   (name: a-z 0-9 _ -)" >&2; return 1; }
+  tmpdir="$(mktemp -d "$HOME/.claude-add.XXXXXX")" || return 1
+  echo "claude: /login as '$acc' in the session that opens, then /exit." >&2
+  CLAUDE_CONFIG_DIR="$tmpdir" claude
+  if ! __claude_bundle_ok "$tmpdir/.credentials.json" \
+     || [ -z "$(jq -r '.oauthAccount.emailAddress // empty' "$tmpdir/.claude.json" 2>/dev/null)" ]; then
+    echo "claude: no completed login found — bundle '$acc' NOT written." >&2
+    rm -rf "$tmpdir"; return 1
+  fi
+  mkdir -p "$base" && chmod 700 "$base"
+  cp -f "$tmpdir/.credentials.json" "$base/$acc.credentials.json"
+  jq '.oauthAccount' "$tmpdir/.claude.json" > "$base/$acc.oauthAccount.json"
+  chmod 600 "$base/$acc.credentials.json" "$base/$acc.oauthAccount.json"
+  rm -rf "$tmpdir"
+  echo "claude: saved '$acc' = $(jq -r '.emailAddress' "$base/$acc.oauthAccount.json") — run: claude-$acc" >&2
+  __claude_aliases
+}
+__claude_aliases() {   # one claude-<name> alias per bundle — adding an account needs no edit here
+  local f n
+  for f in "$HOME/.claude/.accounts/"*.oauthAccount.json; do
+    [ -e "$f" ] || continue
+    n="$(basename "$f" .oauthAccount.json)"
+    alias "claude-$n=__claude_switch $n && env -u CLAUDE_CONFIG_DIR claude"
+  done
+}
+__claude_aliases
 # ================================================================================
 ```
 
@@ -229,6 +269,12 @@ Only rule: authorize as the account that session is running (`claude-accX` → l
   recovery — that account must `/login` again. The `__claude_save` guard above now prevents
   this from recurring. Check bundle health:
   `jq '(.claudeAiOauth//.)|{a:(.accessToken|length),r:(.refreshToken|length),exp:.expiresAt}' ~/.claude/.accounts/<name>.credentials.json`
+- **An account "disappeared" after `/login`-ing it inside another account's session:** its
+  token was overwritten by the next switch (gotcha 8) and cannot be recovered. Run
+  `__claude_add <name>` and log in again. If the switch prints "live login … has no bundle",
+  run `__claude_save <name>` first — that is the guard saving you from the same loss.
+- **`claude-<name>: command not found` in an older terminal:** aliases are built when the shell
+  starts; run `__claude_aliases` or open a new terminal.
 - **OAuth callback hangs (WARP/VPN/SSH):** during login, copy the URL Claude prints, authorize
   in a browser (Incognito signed into the right account), paste the auth code into the CLI.
 - **Aliases missing in a new terminal:** confirm `~/.bash_aliases` is sourced from
@@ -239,7 +285,7 @@ Only rule: authorize as the account that session is running (`claude-accX` → l
 ## Rollback
 
 ```bash
-# remove the __claude_* functions + claude-* aliases from ~/.bash_aliases
+# remove the __claude_* functions and the __claude_aliases call from ~/.bash_aliases
 rm -rf ~/.claude/.accounts          # (optional) delete the stored tokens
 # original identity is backed up at ~/.claude.json.bak-multiacct
 ```

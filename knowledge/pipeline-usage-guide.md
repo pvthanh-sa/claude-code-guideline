@@ -109,7 +109,7 @@ test -d "$GUIDE/.claude/skills" || { echo "STOP: $GUIDE/.claude/skills not found
 mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
 
 # Skills
-for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan claude-review-setup; do
   ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
 
@@ -126,12 +126,18 @@ for a in infra-reviewer cost-optimizer security-auditor ansible-reviewer inciden
 done
 
 # Sanity: no dangling symlinks (each must resolve to a real file)
-for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan claude-review-setup; do
   readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok  $s" || echo "DANGLING $s — check GUIDE / clone"
 done
 ```
 
-**Restart Claude Code**, type `/` — you should see all 7 commands.
+`/claude-review-setup` also has its own check —
+`bash "$GUIDE/.claude/skills/claude-review-setup/scripts/preflight.sh" --install` creates its link and
+verifies the kit and its tools.
+
+**Restart Claude Code**, type `/` — you should see all 8 commands: the 7 pipeline stages plus
+`/claude-review-setup` (installs the Claude PR review workflow into any repo — see
+[`templates/claude-review/README.md`](templates/claude-review/README.md)).
 
 > **Why symlink matters for file resolution:** each skill reaches back into the guideline repo for
 > the files it needs at runtime — templates (`iac-scan.yml`, `secret-scan/`, `infra-document-template.md`),
@@ -233,7 +239,7 @@ piece surfaces now (PASS/FAIL per line) instead of mid-pipeline:
 ```bash
 GUIDE=~/Documents/Devops/claude-code-guideline   # your guideline clone (from §1.0)
 echo "== skills/workflow/agents resolve (catches dangling symlinks) =="
-for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan claude-review-setup; do
   readlink -f ~/.claude/skills/$s/SKILL.md >/dev/null 2>&1 && echo "ok  skill $s" || echo "FAIL skill $s"
 done
 readlink -f ~/.claude/workflows/infra-review.js >/dev/null 2>&1 && echo "ok  workflow infra-review" || echo "FAIL workflow infra-review"
@@ -1108,7 +1114,7 @@ GUIDE=~/Documents/Devops/claude-code-guideline   # set to YOUR clone of the guid
 # install: terraform aws uv/uvx docker node python3 openssl drawio tflint checkov trivy betterleaks(or gitleaks)  (see §1.0)
 # Stage 3b only (skip for a Terraform-only stack): "$GUIDE"/.claude/skills/ansible-engineer/scripts/bootstrap-ansible.sh --dry-run
 mkdir -p ~/.claude/skills ~/.claude/workflows ~/.claude/agents
-for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan; do
+for s in init-project spec-architect iac-implement ansible-implement infra-review infra-document secret-scan claude-review-setup; do
   ln -sfn "$GUIDE/.claude/skills/$s" ~/.claude/skills/$s
 done
 for wf in "$GUIDE"/.claude/workflows/*.js; do

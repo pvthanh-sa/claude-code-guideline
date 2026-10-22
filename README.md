@@ -44,6 +44,7 @@ Domain skills, on top of the seven pipeline stages below. Simply type `/` in Cla
 12. `cli-developer`: Internal tooling (Go/Node/Python CLIs).
 13. `secure-code-guardian`: OWASP prevention.
 14. `lb-keepalive`: **(Custom)** Aligns keep-alive / idle timeouts across CDN → LB → proxy → app → outbound clients (the intermittent-502 race), any runtime, with a language-agnostic check script.
+15. `claude-review-setup`: **(Custom)** Installs/upgrades the Claude PR review GitHub workflow in any repo (app or IaC): a read-only reviewer with stack profiles, verifier subagents and a `repo-context.md` written from the codebase. Kit: `knowledge/templates/claude-review/`.
 
 ---
 
