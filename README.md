@@ -45,6 +45,7 @@ Domain skills, on top of the seven pipeline stages below. Simply type `/` in Cla
 13. `secure-code-guardian`: OWASP prevention.
 14. `lb-keepalive`: **(Custom)** Aligns keep-alive / idle timeouts across CDN → LB → proxy → app → outbound clients (the intermittent-502 race), any runtime, with a language-agnostic check script.
 15. `claude-review-setup`: **(Custom)** Installs/upgrades the Claude PR review GitHub workflow in any repo (app or IaC): a read-only reviewer with stack profiles, verifier subagents and a `repo-context.md` written from the codebase. Kit: `knowledge/templates/claude-review/`.
+16. `dual-engine-study`: **(Custom)** Builds a study guide for a complex IT subject (Kubernetes, AWS, ...) with two engines: NotebookLM as a closed-world tutor grounded in your docs (trace, predict, diagnose) and Gemini as an open-world mentor (analogies, production incidents, design, interviews). Ships the method (`framework.md`), templates, a NotebookLM sync script, and the Kubernetes guide as its worked example. Run `/dual-engine-study <subject> [docs-dir]`.
 
 ---
 
