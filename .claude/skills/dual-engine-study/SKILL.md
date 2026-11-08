@@ -25,10 +25,10 @@ Act as an **expert IT educator and senior cloud architect**:
 ### 1. Intake
 
 Ask in **one** AskUserQuestion, only for what is unknown:
-- **Goal:** job skills, a certification, or a specific project.
+- **Goal:** understand the subject for work, interviews, or a certification. It sets the goal-dependent switches in `framework.md` §7.
 - **Corpus:** where the docs are.
 - **Level:** current level in the subject.
-- **Time:** hours per week.
+- **Time:** hours per week. It picks the session plan in `framework.md` §4.
 
 Defaults, unless the user says otherwise:
 - study materials and prompts in English;
@@ -67,10 +67,13 @@ Follow the template block. In order:
    - Deep Dive audio prompt;
    - one `TRACE` event;
    - 5 `PREDICT` failures;
-   - the `DIAGNOSE` line;
-   - optionally a Debate prompt.
-4. **Gemini:** `ANALOGY`, `INCIDENT`, `CONTEXT`, `DESIGN` and `INTERVIEW` starters.
-5. **Done when:** 2–3 abilities, never "read X".
+   - the `DIAGNOSE` line.
+4. **Reference diagrams:** the corpus's own diagrams that show this module's flow, as short name + section.
+   - Find them with a scan of fenced blocks that contain box-drawing characters (`┌ │ ─ ═ ▶`) or arrows, plus Markdown images, grouped by heading.
+   - Check that every section you name exists.
+   - A module without any: write "none in the docs yet", use Gemini `REVIEW` in session A instead, and add the missing diagram to `Gaps`. Offer the user to draw it in the docs.
+5. **Gemini:** `INCIDENT`, `CONTEXT`, `DESIGN` and `INTERVIEW` starters, plus an optional `ANALOGY`.
+6. **Done when:** 2–3 abilities, never "read X". Next week's blank redraw checks them.
 
 **Grounding rule:** for every `PREDICT` failure, `grep` the corpus for its mechanism. If the corpus does not describe it, move it to a Gemini `INCIDENT`. An `INCIDENT` starter gives a symptom only, never the cause.
 
@@ -80,8 +83,13 @@ Follow the template block. In order:
 
 The learner is new to NotebookLM and Gemini. Before any module, the guide must let them picture every click and every exchange:
 - **Part 1, one-time setup, click by click.** Copy UI paths only from `framework.md` → *Engine facts*, which are verified from screenshots or dated sources. Say which steps are unverified and ask for a screenshot.
-- **Part 2, the first week for Module 1, day by day.** For each item: which panel, which button, which dialog field, which prompt to paste, and what to copy into which note afterwards.
-- **Part 3, one sample exchange per command** (`TRACE`, `PREDICT`, `DIAGNOSE`, `DEBRIEF`, `HANDOVER`, `REVIEW`, `ANALOGY`, `INCIDENT`, `CONTEXT`, `DESIGN` / `INTERVIEW`, `VERIFY`):
+- **Part 2, the week, session by session**, using the session plan for the learner's weekly time (`framework.md` §4). For each step: which panel, which button, which dialog field, which prompt to paste, and what to copy into which note afterwards. Include:
+  - the source-setting checklist, Studio dialogs included;
+  - the `Weak links` box schedule;
+  - the predicted vs actual quiz score;
+  - the monthly reconcile.
+- **Part 5, tools:** the §7 decision table for the learner's goal, with a "why" per row, Skip and Never included, so the learner sees what was left out on purpose.
+- **Part 3, one sample exchange per command** (`TRACE`, `PREDICT`, `DIAGNOSE`, `DEBRIEF`, `HANDOVER`, `INCIDENT`, `CONTEXT`, `DESIGN` / `INTERVIEW`, `VERIFY`, `ANALOGY` / `REVIEW`), showing `sure:` / `guess:` and a *Confident error*:
   - rewritten with the subject's own Module 1 prompts;
   - 4–8 lines each;
   - `…` wherever a real answer would spoil a `PREDICT` item.
@@ -90,7 +98,14 @@ Theory comes last (Part 6), and the instruction blocks go in the appendices.
 
 ### 6. Fill the two instruction blocks
 
-Replace the `{{…}}` placeholders in the template's NotebookLM and Gemini instructions with subject-specific values; the K8s values are given as examples. Keep the rules verbatim.
+Replace the `{{…}}` placeholders in the template's NotebookLM and Gemini instructions with subject-specific values; the K8s values are given as examples. Keep the rules verbatim, including:
+- `sure:` / `guess:` and *Confident errors*;
+- the Vietnamese-help rule (or the learner's own language);
+- the three-list `DEBRIEF` with its printed handover card;
+- `VERIFY` quoting the deciding sentence;
+- the `[Current practice, …]` label on `Upgrades`.
+
+For an interview goal, put the hire / no-hire signal back into `INTERVIEW`.
 
 Check the lengths:
 - NotebookLM Custom: at most 10,000 characters;
@@ -109,9 +124,10 @@ Check the lengths:
 ### 8. Re-verify the engine facts
 
 NotebookLM and Gemini change every few months.
-- If `framework.md` → *Engine facts* is older than about 3 months, or the user's screenshots disagree with it, `WebSearch` the features the guide relies on.
-- Update `framework.md` and the guide together.
-- Cite the sources to the user.
+- If `framework.md` → *Engine facts* is older than about 3 months, or the user's screenshots disagree with it, `WebSearch` the **full current feature list of both apps**, not only the features the guide uses.
+- Rate every new or changed feature with the four questions of `framework.md` §7 and record the decision there, Skip and Never included.
+- For a large change, have an independent agent design its own tool selection from the inventory and the learner profile, without seeing yours, then reconcile the two.
+- Update `framework.md` and the guide together, and cite the sources to the user.
 
 ### 9. Verify the guide
 
@@ -123,14 +139,19 @@ NotebookLM and Gemini change every few months.
 - [ ] Each module builds only on earlier ones, and every prompt is paste-ready English inside a code block.
 - [ ] The parts are in order: operations (Parts 1–3), then material (Parts 4–5), then theory (Part 6).
 - [ ] Every command used in the modules has a sample in Part 3, and every UI step is verified or marked unverified.
+- [ ] Every module has a **Reference diagrams** line, and every section it names exists in the docs.
+- [ ] Part 5 rates every feature from `framework.md` §7, and no Skip or Never tool appears in Parts 1–4.
+- [ ] The sessions add up to the learner's weekly time.
 
 ### 10. Hand over
 
 Tell the user:
 - what was built;
 - the setup steps;
-- the first session to run (Module 1, Phase 1);
+- the first session to run (Module 1, session A);
 - anything not verified.
+
+If the instruction blocks changed, put Appendix A on the clipboard (`xclip -selection clipboard`) and tell the user to paste it again into **Configure Chat**, then Appendix B into the Gem.
 
 Then:
 - save a project memory recording the subject, the guide path and the sync script, with the rule "update `SOURCES` when docs are added, renamed or deleted";
@@ -148,13 +169,16 @@ These were learned on the Kubernetes guide:
 
 - **No flashcards-first, no chapter-by-chapter rounds.** They produced rote definition cards. Flashcards are made only from the learner's `Weak links`.
 - **Every question connects at least 2 components** and is one of the four types: who decides, the path, failure, design. Definition and recall questions are banned.
-- **Within a module, the closed world comes before the open world.** Engines switch only between phases, with a handover card.
+- **Within a module, the closed world comes before the open world.** Engines switch only between steps, with the handover card that `DEBRIEF` prints.
 - **Analogies always come with a mapping table and at least 2 breaking points**, and the learner finds one more.
-- **The learner draws before seeing any diagram** (`REVIEW`), so there is no standalone "visualise" mode.
+- **Choose tools for the learner, not because they exist.** Rate every feature with `framework.md` §7 before the guide mentions it. The user, after tools had been added one question at a time: *"Ko phải là khi nào tôi thấy thiếu và hỏi thì bạn mới nghĩ ra… trọng tâm là người học"*.
+- **Pictures come from the docs' verified diagrams, after the learner draws.** AI-drawn visuals (Video, Infographic, Canvas) never replace them; `REVIEW` is only for modules without one.
+- **Verification means the learner reads the quoted sentence on the official page.** A model rechecking its own claim does not count.
+- **Weak links need a schedule** (boxes and due dates), because NotebookLM keeps no scores.
 - **Gemini labels its claims** (`[My docs]` / `[Source: …]` / `[Experience]` / `[Inference]`) and cites dated official docs.
-- **`Upgrades` enter the docs only after `VERIFY` and with the user's consent.** Some doc sections may be user-owned.
+- **`Upgrades` enter the docs only after the learner has seen the quoted official sentence, and with the user's consent:** at most two per module, folded in monthly. Some doc sections may be user-owned.
 - **The guide is never uploaded to NotebookLM.** It lives in this skill's `examples/`, or in `SKIP` if kept next to the docs.
 - **Write the guide as a spec:** present tense, no session history, kebab-case file names.
 - **Operations before theory.** The first Kubernetes guide explained the method well but not the clicks. The user: *"cách viết hiện tại của m làm t ko hình các thao tác sẽ ra sao. T là người mới dùng notebooklm và gemini mà"*. Every guide now opens with Parts 1–3.
 - **Never guess where a button is.** Describe UI steps only from the user's screenshot or a dated source, and record them in `framework.md` → *Engine facts*. On the Kubernetes guide, guessing pointed the user to a "Configure" button that did not exist, then to the connector menu; the real path was **⋮** → **Configure Chat**.
-- **Closed-world sessions leave Gemini chats unticked.** They appear in NotebookLM's sources as *Chats from Gemini*.
+- **Nothing unchecked enters the closed world.** Untick *Chats from Gemini* in every source picker, and never use *Search the web for new sources* in the study notebook.

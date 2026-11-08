@@ -1,8 +1,9 @@
 <!--
 Template for a dual-engine study guide (dual-engine-study skill).
 The guide is for a learner who is new to NotebookLM and Gemini: operations first (Parts 1–3), material (Parts 4–5), theory last (Part 6).
-Replace every {{PLACEHOLDER}}; framework.md §8 gives the subject-specific values. Rewrite the Part 3 samples with the subject's Module 1.
-UI steps must match a screenshot or a dated source (framework.md §9). Reference for depth and tone: examples/kubernetes-study-guide.md.
+Replace every {{PLACEHOLDER}}; framework.md §9 gives the subject-specific values, §4 the session plan for the learner's weekly hours,
+§7 the tool decisions for the learner's goal. Rewrite the Part 3 samples with the subject's Module 1.
+UI steps must match a screenshot or a dated source (framework.md §10). Reference for depth and tone: examples/kubernetes-study-guide.md.
 Delete this comment.
 -->
 
@@ -14,12 +15,12 @@ How to master {{SUBJECT}} as a system, with two AI engines that do different job
 
 **Routing rule:** if the answer should be in your docs, ask NotebookLM. If it needs anything outside them, ask Gemini.
 
-The docs live in `{{DOCS_DIR}}/`. This guide lives with the `dual-engine-study` Claude Code skill and is not uploaded to NotebookLM.
+The docs live in `{{DOCS_DIR}}/`. This guide lives with the `dual-engine-study` Claude Code skill and is not uploaded to NotebookLM. It is set up for {{WEEKLY_HOURS}} a week, with the goal {{GOAL}}.
 
 **How to read this guide:**
-- **New to NotebookLM and Gemini?** Do [Part 1](#part-1-one-time-setup) once, then follow [Part 2](#part-2-your-first-week-step-by-step) for your first week. [Part 3](#part-3-what-each-command-looks-like) shows what every command looks like in practice.
+- **New to NotebookLM and Gemini?** Do [Part 1](#part-1-one-time-setup) once, then follow [Part 2](#part-2-your-week-session-by-session) every week. [Part 3](#part-3-what-each-command-looks-like) shows what every command looks like in practice.
 - **Part 4** holds the modules, your weekly material.
-- **Part 5** has the Studio prompts.
+- **Part 5** says which tools to use, which to skip and why, and has the Studio prompts.
 - **Part 6** explains why the method works.
 
 ## Part 1: One-time setup
@@ -39,11 +40,23 @@ NotebookLM's footer now reads *Gemini Notebook*; it is the same app at notebookl
    - Open **⋮** → **Configure Chat**.
    - Under *Define your conversational goal, style, or role*, choose **Custom**.
    - Paste [Appendix A](#appendix-a-notebooklm-instructions) into the text box. Copy only the text inside the grey box; the counter then shows about `{{NLM_INSTRUCTION_CHARS}} / 10000`.
-   - Leave *Choose your response length* on **Default**, then click **Save**.
+   - Leave *Choose your response length* on **Default** (*Shorter* cuts off `DEBRIEF`), then click **Save**.
 
    The instructions are a notebook setting, separate from the chat history.
 4. **Create three notes.** Click **Add note** at the bottom of the Studio panel three times, and title the notes `Weak links`, `Gaps` and `Upgrades`.
+   - Leave `Gaps` and `Upgrades` empty: your `DEBRIEF`s fill them later.
+   - In `Weak links`, type only this first line, as normal text (not in a code block): `Quiz (predicted / actual): week 1 – / –`
+   - Never click **Convert to source** at the bottom of a note: it turns the note into a source, so your list of mistakes would become material that the chat and the quizzes draw on.
+
+   After a few sessions, `Weak links` looks like this. It is an example, not something to copy:
+   ```
+   Quiz (predicted / actual): week 1 70% / 55%
+   ! ReplicaSet controller -> creates the Pods because the scheduler only assigns existing Pods to nodes (box 1, due 2026-11-15)
+   kubelet -> reports Pod status through the API server because no component talks to etcd directly (box 1, due 2026-11-15)
+   ```
+   `!` marks a confident error; the box and the due date drive your reviews (Part 2, session D).
 5. **Keep `Chats from Gemini` unticked.** Once you have chatted with this notebook in Gemini, the Sources panel shows a **Chats from Gemini (N)** group at the top of the list, just under **Select all**, with a ✦ icon and a ▾ arrow. **Select all** ticks it too. Untick it: it holds Gemini's unverified open-world answers, and verified facts should reach NotebookLM only through the docs (`Upgrades`). If the group is not there, there is nothing to do.
+6. **Never use *Search the web for new sources*** in this notebook: that is the box at the top of the Sources panel, with **Web** and **Fast Research**. It imports web pages as sources, and they would mix with your docs. Questions beyond your docs go to Gemini.
 
 **When the docs change**, run the script again and do what it reports:
 
@@ -61,90 +74,99 @@ NotebookLM's footer now reads *Gemini Notebook*; it is the same app at notebookl
 3. Fill in the Gem:
    - **Name:** `{{GEM_NAME}}`.
    - **Instructions:** paste [Appendix B](#appendix-b-gemini-instructions).
-   - Leave the default tool empty.
-4. **Knowledge:** if the Gem offers to add a NotebookLM notebook, add `{{NOTEBOOK_NAME}}`. If it does not, skip this step; you attach the notebook in each chat instead. On a Workspace account the option only appears once the admin has enabled NotebookLM.
-5. Click **Save**.
+   - Leave the default tool empty and add no Knowledge files: you attach the notebook in each chat instead.
+4. Click **Save**.
 
 **To start a Gemini study session:**
 1. In the side panel, open **Gems** → **{{GEM_NAME}}**; every session is a new chat in the Gem.
-2. In the prompt box, click **+** → **NotebookLM** and pick `{{NOTEBOOK_NAME}}`. Skip this if the Gem already has the notebook as Knowledge.
-3. Send your first message: a [handover card](#handover-switching-engines) or a command from Part 3.
+2. In the prompt box, click **+** → **NotebookLM** and pick `{{NOTEBOOK_NAME}}`. On a Workspace account this option appears only once the admin has enabled NotebookLM.
+3. Send your first message: the [handover card](#handover-switching-engines) printed by your last `DEBRIEF`, or a command from Part 3.
 
-## Part 2: Your first week, step by step
+## Part 2: Your week, session by session
 
-Each module takes a week and always runs through the same days. Below is Module 1, click by click; later modules work the same way with their own prompts from Part 4.
+One module per week, in **four sessions of about an hour, at least one day apart** (about 4 hours, plus a monthly 20 minutes). The sessions below use Module 1; later modules work the same way with their own prompts from Part 4.
 
 **Before every NotebookLM chat or Studio item, set the sources.** In **Sources**:
 1. Untick **Select all** so that nothing is ticked.
-2. Tick only the module's files (Module 1: {{MODULE_1_SOURCES}}).
+2. Tick only the files the session needs (Module 1: {{MODULE_1_SOURCES}}).
 3. Check that **Chats from Gemini** stays unticked.
 
-### Day 1: Model and Trace (about 60 minutes)
+Studio dialogs (Audio Overview, Quiz, Flashcards) have their own **Sources** menu: open it and check the same.
 
-1. **Listen (NotebookLM, about 20 minutes).** In the Studio panel, open **Audio Overview**. In *Customize Audio Overview*, set:
+### Session A: Model and Trace (about 60 minutes)
+
+1. **New module only:** if the chat still holds last week's conversation and its `DEBRIEF` is saved, clear it with **⋮** → **Delete chat history**. The first time, reopen **⋮** → **Configure Chat** afterwards to check that your instructions are still there.
+2. **Start the audio (NotebookLM).** In the Studio panel, open **Audio Overview**. In *Customize Audio Overview*, set:
    - **Format:** Deep Dive.
    - **Choose language:** English.
-   - **Length:** Default.
+   - **Length:** Short.
    - **Sources:** the module's files.
    - **What should the AI hosts focus on in this episode?:** paste the module's **Audio** prompt.
 
-   Do not click the suggestion chips under the box (such as *+ Scaling Logic*): they add text that pulls the episode away from the module. Click **Generate**; the episode appears in the Studio panel after a few minutes. If a **Join** button shows while it plays, you can interrupt the hosts with a question.
-2. **Draw (paper, about 10 minutes).** Without looking at anything, draw what you heard:
-   - one box per component;
-   - one arrow per "talks to";
-   - next to each box, what it reads or writes.
+   Do not click the suggestion chips under the box (such as *+ Scaling Logic*): they add text that pulls the episode away from the module. Click **Generate**; the episode takes a few minutes, so do step 3 meanwhile.
+3. **Draw before you learn (paper, about 7 minutes).**
+   - **From Module 2 on:** redraw *last* week's model on a blank page without looking. Then open last week's reference diagram and mark the differences in red; each difference becomes a line in `Weak links`. This, not a feeling of "done", is how you know last week stuck.
+   - **This week's model:** sketch it for 2 minutes from what you already know. Guesses are fine: they tell you what to listen for.
+4. **Listen with the diagram open (about 15 minutes).** Open the module's **Reference diagrams** (Part 4) in VS Code's Markdown preview and play the episode in the Studio panel while you look at them. If one hop confuses you, click **Join** (if shown) and ask the hosts.
+5. **Redraw and compare (about 10 minutes).** Close everything and redraw the model from memory: one box per component, one arrow per "talks to", and next to each box what it reads or writes. Then open the reference diagrams again and mark every difference in red.
+   - A module **without** reference diagrams (Module 6): instead of comparing, photograph your drawing, start a Gemini session and send `REVIEW` ([sample](#analogy-and-review)).
+   - **Optional:** if the model still feels abstract, send the module's **ANALOGY** prompt in a Gemini session ([sample](#analogy-and-review)).
+6. **Trace (NotebookLM, about 15 minutes).** Paste the module's **Trace** prompt into the chat box and answer one question at a time ([sample](#trace)).
+7. **Close the session.** Send `DEBRIEF` ([sample](#debrief)) and click **Save to note** under the reply. Then:
+   - copy the *Confident errors* lines to the top of `Weak links` with a `!`, and the *Weak links* lines below them; give every new line the due date of next week's session D;
+   - copy the *Hand to Gemini* lines into `Gaps`;
+   - keep the handover card for session B.
 
-   A wrong drawing is fine; the next step fixes it.
-3. **Review the drawing (Gemini, about 15 minutes; you can skip it on your first day).**
-   - Photograph the drawing and start a Gemini session (Part 1).
-   - Add the photo with **+**, then send `REVIEW` ([sample](#review)).
-   - When the drawing is right, send the module's **ANALOGY** prompt ([sample](#analogy)).
-4. **Trace (NotebookLM, about 15 minutes).** Paste the module's **Trace** prompt into the chat box and answer one question at a time ([sample](#trace)).
-5. **Close the day.** Send `DEBRIEF` ([sample](#debrief)). Click **Save to note** under the reply, then copy:
-   - its *Weak links* lines into your `Weak links` note;
-   - its *Hand to Gemini* lines into `Gaps`.
+### Session B: Break (about 60 minutes)
 
-### Day 2: Break (about 45 minutes)
+1. **Predict (NotebookLM).** Send `PREDICT:` followed by one failure from the module's **Predict** list, then answer the four questions, each starting with `sure:` or `guess:` ([sample](#predict)). Do 3 of the 5 failures.
+2. **Diagnose (NotebookLM).** Send the module's **DIAGNOSE** line, for Module 1 `DIAGNOSE {{MODULE_1_TOPIC}}`, and investigate ([sample](#diagnose)). Do one, or two if time allows.
+3. **Close the NotebookLM part.** `DEBRIEF` → **Save to note** → copy the lines into your notes, as in session A.
+4. **Incident (Gemini).** Start a Gemini session, paste the handover card with your own *Model in one sentence*, then send the module's **INCIDENT** prompt ([sample](#incident)).
+5. **Close the Gemini part.** Send `DEBRIEF`, copy its *Confident errors* and *Weak links* lines into `Weak links`, and keep its handover card for session C.
 
-1. **Optional, for a clean chat:** **⋮** → **Delete chat history** (it deletes the whole chat; your notes are not affected). The first time, reopen **⋮** → **Configure Chat** afterwards to check that your instructions are still there.
-2. **Predict (NotebookLM).** Send `PREDICT:` followed by one failure from the module's **Predict** list, then answer the four questions ([sample](#predict)). Do at least 3 of the 5 failures.
-3. **Diagnose (NotebookLM).** Send the module's **DIAGNOSE** line, for Module 1 `DIAGNOSE {{MODULE_1_TOPIC}}`, and investigate ([sample](#diagnose)). Do it twice.
-4. **Close the NotebookLM part.** Send `DEBRIEF` → **Save to note** → copy the lines into your notes.
-5. **Incident (Gemini).** Start a Gemini session and send a [handover card](#handover-switching-engines), then the module's **INCIDENT** prompt ([sample](#incident)).
-6. **Close the Gemini part.** Send `DEBRIEF` and copy its *Weak links* lines into `Weak links`.
+### Session C: Extend (about 55 minutes, Gemini)
 
-### Day 4: Extend (about 45 minutes, Gemini)
+1. Start a Gemini session and paste the handover card.
+2. Send the module's **CONTEXT** prompt and answer its closing question ([sample](#context)).
+3. Send the module's **DESIGN** prompt ([sample](#design-and-interview)). **INTERVIEW** is optional: do it in weeks with time to spare.
+4. Send `DEBRIEF`. For each *Upgrades* line (at most two), open its link and find the sentence it relies on; if you cannot find it, send `VERIFY` with the line ([sample](#verify)). Copy into `Upgrades` only the lines whose sentence you have seen.
 
-1. Start a Gemini session and send a handover card.
-2. Send the module's **CONTEXT** prompt, then **DESIGN**, then **INTERVIEW** ([samples](#context)). Finish each exercise before starting the next.
-3. If the module has a **Debate** audio prompt, generate it in NotebookLM (Audio Overview → Format **Debate**) and listen before **INTERVIEW**.
-4. Send `DEBRIEF`. For every *Upgrades* line you want to keep, first send `VERIFY` followed by the line ([sample](#verify)). Copy only the lines that pass into `Upgrades`.
+### Session D: Retain (about 40 minutes, NotebookLM; the phone app is fine)
 
-### Day 5: Retain (about 20 minutes, NotebookLM)
+1. **Quiz on last week's module** (this week's module in week 1).
+   - At the top of `Weak links`, write the score you expect.
+   - In the Studio panel, open **Quiz** and set: **Difficulty:** Hard; **Language:** English; **Sources:** last week's module files; **Topic box:** the Quiz prompt from Part 5 with that module's name.
+   - Answer every question, click **Explain** on every wrong answer, then write the real score next to your prediction. A big gap means you feel surer than you are.
+2. **Due flashcards.**
+   - Copy every `Weak links` line whose due date has arrived.
+   - Open **Flashcards** and set **Fewer** or **Standard**, **Hard**, **Text Only**, **English**; in the topic box paste the Flashcards prompt from Part 5 with those lines.
+   - After the cards, update each line:
 
-1. **Quiz.** In the Studio panel, open **Quiz** and set:
-   - **Difficulty:** Hard.
-   - **Language:** English.
-   - **Sources:** the module's files.
-   - **Topic box:** the Quiz prompt from Part 5, with the module's name filled in.
+   | Your answer | New box | Next due |
+   | --- | --- | --- |
+   | Wrong | 1 | next week |
+   | Right, line was in box 1 | 2 | in 2 weeks |
+   | Right, line was in box 2 | 3 | in 4 weeks |
+   | Right, line was in box 3 | — | delete the line: learned |
+3. **Mixed drill (about 10 minutes).** Alternate week by week:
+   - **NotebookLM:** tick **all** sources (still not *Chats from Gemini*), then send `CHAOS`.
+   - **Gemini:** start a session and send `INCIDENT` with no topic.
 
-   Answer every question, and click **Explain** on every wrong answer.
-2. **Flashcards.** Open **Flashcards** and set: **Standard**, **Hard**, **Text Only**, **English**. In the topic box, paste the Flashcards prompt from Part 5 with your `Weak links` lines.
-3. **Fold upgrades into the docs.** When `Upgrades` has lines worth keeping, ask Claude Code to fold them into the docs. Then run the sync script and re-upload the `CHANGED` files.
+   Mixing topics is what trains you to tell problems apart.
 
-### End of the week: mixed drill (about 20 minutes)
+### Once a month (about 20 minutes)
 
-Alternate between the two engines, week by week:
-- **NotebookLM:** tick **all** sources (still not *Chats from Gemini*), then send `CHAOS`.
-- **Gemini:** start a session and send `INCIDENT` with no topic.
-
-Mixing topics is what trains you to tell problems apart.
+1. Ask Claude Code to fold the lines in `Upgrades` into the docs, then clear the note.
+2. Run the sync script and re-upload the `CHANGED` files (Part 1).
 
 ## Part 3: What each command looks like
 
 **Commands are ordinary messages:** type them into the chat box and press Enter. They work because of the instructions you pasted in Part 1.
 - **Answer in a few sentences of your own.** The AI grades the cause-and-effect links, not your wording, and you do not need exact command syntax.
+- **Say how sure you are.** Start an answer with `sure:` or `guess:`. A wrong `sure:` answer is marked *Confident error*: it is the misconception most worth fixing, and the one you will fix fastest.
 - **Stuck?** Send `hint` for a smaller leading question. Send `reveal` for the full answer to the current question.
+- **A hard step?** Ask in Vietnamese: the AI explains in Vietnamese and keeps the technical terms and its questions in English.
 
 | Command | Engine | What you get | Finished when |
 | --- | --- | --- | --- |
@@ -152,14 +174,14 @@ Mixing topics is what trains you to tell problems apart.
 | `PREDICT: <failure>` | NotebookLM | A named failure; you predict its effects before they are revealed | It has scored your prediction |
 | `DIAGNOSE <topic>` | NotebookLM | A hidden failure; you investigate from the first symptom | You have named the root cause, the fix and the prevention |
 | `CHAOS` | NotebookLM | `DIAGNOSE` on any topic, without saying which | As for `DIAGNOSE` |
-| `REVIEW` with a photo | Gemini | Questions that lead you to fix your own drawing | Your drawing is right; then it shows its version |
-| `ANALOGY: <concept>` | Gemini | An analogy, a mapping table, two places it breaks | You have found a third break |
 | `INCIDENT: <symptom>` | Gemini | An incident drill at production scale | Root cause, mitigation, fix, prevention, and the link back to your docs |
 | `CONTEXT: <topic>` | Gemini | A short, cited explanation of current practice | You have answered its closing question |
 | `DESIGN: <brief>` | Gemini | A design exercise whose requirements keep changing | It compares your design with a reference design |
-| `INTERVIEW: <topic>` | Gemini | A mock interview | Feedback with a hire or no-hire signal |
-| `VERIFY <claim>` | Gemini | True, Partly true, False or Outdated, with dated sources | |
-| `DEBRIEF` | Both | The lists to copy into your notes | |
+| `INTERVIEW: <topic>` | Gemini | A mock interview (optional) | Feedback: strengths, gaps, what to study next |
+| `ANALOGY: <concept>` | Gemini | An analogy, a mapping table, two places it breaks (optional) | You have found a third break |
+| `REVIEW` with a photo | Gemini | Questions that lead you to fix your own drawing (modules without a reference diagram) | Your drawing is right |
+| `VERIFY <claim>` | Gemini | A verdict, with the official sentence quoted and linked | You have found that sentence on the page |
+| `DEBRIEF` | Both | Confident errors, weak links, and gaps or upgrades, plus a ready handover card | |
 | `HANDOVER …` | Both | The other engine starts from your weak links | |
 
 <!-- The samples below come from the Kubernetes guide. Rewrite each one with the subject's own Module 1 prompts, keeping the same shape and length. -->
@@ -172,13 +194,13 @@ Send the module's **Trace** prompt. A session looks like this:
 >
 > **NotebookLM:** You ran `kubectl apply`. Which component receives the request first, and what does it do with it?
 >
-> **You:** kubectl sends the Deployment to the API server, which validates it and stores it in etcd.
+> **You:** sure: kubectl sends the Deployment to the API server, which validates it and stores it in etcd.
 >
 > **NotebookLM:** Correct [1]. The Deployment now exists in etcd, but no Pod exists yet. Which component notices this, and what does it create?
 >
-> **You:** The scheduler creates the Pods?
+> **You:** sure: the scheduler creates the Pods.
 >
-> **NotebookLM:** Wrong. Missing link: the scheduler does not create Pods; it only assigns existing Pods to nodes [2]. Which component watches Deployments?
+> **NotebookLM:** Confident error. Missing link: the scheduler does not create Pods; it only assigns existing Pods to nodes [2]. Which component watches Deployments?
 >
 > **You:** hint
 >
@@ -194,9 +216,9 @@ Send `PREDICT:` and **one** failure from the module's **Predict** list per messa
 >
 > **NotebookLM:** Before I reveal anything, predict: (1) what breaks immediately, (2) what keeps working, (3) what breaks later, (4) what users see.
 >
-> **You:** (1) … (2) … (3) … (4) … *(your four answers)*
+> **You:** (1) sure: … (2) guess: … (3) guess: … (4) sure: …
 >
-> **NotebookLM:** (1) Correct: … [3]. (2) Partly correct: you missed … (3) Wrong: … The real chain of effects: 1. … 2. … 3. …
+> **NotebookLM:** (1) Correct: … [3]. (2) Partly correct: you missed … (3) Wrong: … (4) Confident error: … The real chain of effects: 1. … 2. … 3. …
 
 ### DIAGNOSE
 
@@ -214,7 +236,7 @@ Send the module's **DIAGNOSE** line. NotebookLM chooses a failure and hides it:
 >
 > **NotebookLM:** *(simulated output)*
 >
-> **You:** Root cause: … Fix: …
+> **You:** guess: root cause … fix …
 >
 > **NotebookLM:** Correct. You reached the right layer after two steps; looking at … first would have been faster. How do you prevent it from happening again?
 
@@ -222,21 +244,24 @@ Send the module's **DIAGNOSE** line. NotebookLM chooses a failure and hides it:
 
 ### DEBRIEF
 
-Send it at the end of every session. NotebookLM answers with two lists:
+Send it at the end of every session. NotebookLM answers with three lists and a handover card:
 
+> **Confident errors**
+> - ReplicaSet controller -> creates the Pods because the scheduler only assigns existing Pods to nodes (box 1)
+>
 > **Weak links**
-> - ReplicaSet controller -> creates the Pods because the scheduler only assigns existing Pods to nodes
+> - kubelet -> reports Pod status through the API server because no component talks to etcd directly (box 1)
 >
 > **Hand to Gemini**
 > - How does a managed control plane such as EKS protect etcd?
+>
+> *(then the handover card, in a code block)*
 
-Click **Save to note** under the reply. Copy the *Weak links* lines into your `Weak links` note and the *Hand to Gemini* lines into `Gaps`.
-
-Gemini's `DEBRIEF` returns *Weak links* and *Upgrades*, each *Upgrades* line with a source link. Send `VERIFY` with an *Upgrades* line before you copy it into `Upgrades`.
+Click **Save to note** under the reply, then copy the lines into your notes as session A step 7 describes. Gemini's `DEBRIEF` has *Upgrades* instead of *Hand to Gemini*: at most two lines, each with its source page.
 
 ### HANDOVER: switching engines
 
-The first message after you switch engines is a handover card, so the new engine starts from your weak links. Fill it from the last `DEBRIEF`:
+`DEBRIEF` prints the card. Fill in only the second line, the model in one sentence in your own words (a 30-second recall), and paste the card as the first message in the other engine:
 
 ```
 HANDOVER from NotebookLM, Module 1: The control loop
@@ -246,39 +271,7 @@ Open question: How does a managed control plane such as EKS protect etcd?
 Next: INCIDENT: every deployment in the cluster suddenly fails, although all running Pods are healthy.
 ```
 
-The blank card:
-
-```
-HANDOVER from <NotebookLM | Gemini>, Module <n>: <name>
-Model in one sentence: <your own words>
-Links I got wrong: <lines from DEBRIEF>
-Open question: <one question the last session left open>
-Next: <MODE> <topic>
-```
-
 Switch engines only between steps, never in the middle of one.
-
-### REVIEW
-
-1. Photograph your drawing.
-2. In a Gemini session, add the photo with **+**.
-3. Send `REVIEW`:
-
-> **Gemini:** What is correct: the API server is in the middle, and each node has a kubelet [My docs]. Question 1: your drawing has an arrow from the scheduler straight to etcd. Which component do all the other components go through?
->
-> **You:** The API server.
->
-> **Gemini:** Correct. Fix that arrow. Question 2: …
-
-Once your drawing is right, Gemini shows its own version as an ASCII diagram with numbered steps. Ask for "Canvas" if you want an interactive one.
-
-### ANALOGY
-
-> **You:** ANALOGY: the Kubernetes control loop. Then stress-test the "K8s Company" analogy in my docs (Theory section II): where does it break?
->
-> **Gemini:** Analogy: … *(a table: analogy element → Kubernetes element)*. Break 1: … (the misconception it could cause: …). Break 2: … Now find a third break.
-
-Answer with your own third break; Gemini grades it.
 
 ### INCIDENT
 
@@ -292,7 +285,7 @@ Answer with your own third break; Gemini grades it.
 >
 > … *(you keep asking for evidence: kubectl, CloudWatch, ALB metrics, CloudTrail)* …
 >
-> **You:** Root cause: …
+> **You:** sure: root cause …
 >
 > **Gemini:** Correct. Investigation score: … Now: what is your mitigation right now, the permanent fix, and the prevention? … [My docs] This connects to Module 1: every write goes through the API server, so …
 
@@ -314,19 +307,33 @@ Answer the closing question; Gemini grades it like any other answer. `CONTEXT` i
 >
 > **Gemini:** New requirement: one team's nightly batch job uses all the CPU. What changes in your design, and what does that cost? … *(3–4 rounds)* … Compared with a reference design: …
 
-`INTERVIEW` runs the same way: one question at a time, follow-ups, at least one "are you sure?", and at the end feedback with strengths, gaps and a hire or no-hire signal.
+`INTERVIEW` (optional) runs the same way: one question at a time, follow-ups, at least one "are you sure?", and at the end feedback with strengths, gaps and what to study next.
 
 ### VERIFY
 
 > **You:** VERIFY ingress-nginx is retired and no longer receives security fixes.
 >
-> **Gemini:** True / Partly true / False / Outdated: … [Source: Kubernetes blog, date] Corrected statement: …
+> **Gemini:** True / Partly true / False / Outdated: … Quote: "…" (page title, date, link). Corrected statement: …
 
-Only lines that pass go into your `Upgrades` note.
+Open the link and find the quoted sentence. Only then does the line go into `Upgrades`.
+
+### ANALOGY and REVIEW
+
+> **You:** ANALOGY: the Kubernetes control loop. Then stress-test the "K8s Company" analogy in my docs (Theory section II): where does it break?
+>
+> **Gemini:** Analogy: … *(a table: analogy element → Kubernetes element)*. Break 1: … (the misconception it could cause: …). Break 2: … Now find a third break.
+
+For `REVIEW`, add the photo of your drawing with **+**, then send `REVIEW`:
+
+> **Gemini:** What is correct: the API server is in the middle, and each node has a kubelet [My docs]. Question 1: your drawing has an arrow from the scheduler straight to etcd. Which component do all the other components go through?
+
+It keeps asking until your drawing is right; then it shows its own version as an ASCII diagram.
 
 ## Part 4: Modules
 
-Each module block gives the mental model to build, the sources to tick, the NotebookLM prompts and the Gemini prompts. Part 2 says on which day each prompt is used.
+Each module block gives the mental model to build, the sources to tick, the **reference diagrams** to open in session A, the NotebookLM prompts and the Gemini prompts. Part 2 says in which session each prompt is used.
+
+**Where the reference diagrams are:** {{a short-name → file table for the docs that hold diagrams}}
 
 <!-- Repeat this block per module (5–8). Each PREDICT failure must be grounded in the corpus: grep for its mechanism first. INCIDENT starters give a symptom only, never the cause. -->
 
@@ -335,6 +342,8 @@ Each module block gives the mental model to build, the sources to tick, the Note
 **Model:** {{2–4 sentences: the components and the causal flow}}
 
 **NotebookLM sources:** `{{flat-source-1.md}}` ({{sections}}), `{{flat-source-2.md}}`
+
+**Reference diagrams:** {{diagrams in the docs that show this module's flow (short name + section); if none: "none in the docs yet", use Gemini REVIEW in session A, and add the missing diagram to Gaps}}
 
 **NotebookLM:**
 - **Audio (Deep Dive):**
@@ -352,10 +361,6 @@ Each module block gives the mental model to build, the sources to tick, the Note
   - {{failure 4}}
   - {{failure 5}}
 - Then `DIAGNOSE {{module topic}}`.
-- **Audio (Debate)**, optional, before the Gemini interview:
-  ```
-  Debate: {{design A}} versus {{design B}}. Argue about {{criteria}}.
-  ```
 
 **Gemini:**
 ```
@@ -383,21 +388,36 @@ INTERVIEW: {{2–3 trade-offs from this module}}.
 
 - {{Doc sections without a module yet, and why}}
 
-## Part 5: Studio tools and prompts
+## Part 5: Tools: what to use, what to skip, and prompts
 
-| Engine | Tool | Role | Notes |
-| --- | --- | --- | --- |
-| NotebookLM | **Audio Overview: Deep Dive** | Phase 1, the worked example | **Join** lets you ask the hosts a question (Deep Dive format, English) |
-| NotebookLM | **Audio Overview: Debate** | Phase 4, both sides of a trade-off | |
-| NotebookLM | **Audio Overview: Critique** | Find weak spots in the docs themselves | Findings go to `Gaps` |
-| NotebookLM | **Chat** (Custom instructions) | Phases 2–3 | One conversation per session; finish with `DEBRIEF` |
-| NotebookLM | **Data Table** | The failure matrix, after most modules | Fill your own on paper first, then compare |
-| NotebookLM | **Quiz** | Phase 5, scenario check | Prompt below; use **Explain** on every wrong answer |
-| NotebookLM | **Flashcards** | Phase 5, only for `Weak links` | Prompt below |
-| Gemini | **Gem** `{{GEM_NAME}}` | Phases 1, 3, 4 | Notebook attached as knowledge |
-| Gemini | **Canvas** | Interactive diagrams after `REVIEW` | Only after you have drawn and fixed your own |
-| Gemini | **Deep Research** | A broad `CONTEXT` topic, at most once per module | `VERIFY` before `Upgrades` |
-| — | Reports, Slide Deck, Video Overview, Infographic | Skip | Formats for presenting to others |
+Every feature of both apps was rated on four questions: does it make you *retrieve, produce or decide*; is it *accurate* (grounded or checkable); does it do something *no other tool here* does better; and is it *cheap* in minutes and clicks? Core tools are in every week; optional ones have a trigger; the rest are left out on purpose.
+
+| Engine | Tool | Use | When | Why |
+| --- | --- | --- | --- | --- |
+| NotebookLM | Chat with Custom instructions (length Default) | Core | Sessions A, B, D | The only tool that keeps asking "why?" and grades your reasoning |
+| NotebookLM | Citations | Core | Whenever a grade surprises you | Your check on the AI: click the number and read the passage |
+| NotebookLM | Audio Overview: Deep Dive, Short | Core | Session A, with the reference diagram open | A worked example; narration with a diagram teaches more than either alone |
+| NotebookLM | Join (while the audio plays) | Optional | One hop confuses you | |
+| NotebookLM | Notes, Save to note | Core | End of every session | `Weak links` is your only progress record |
+| NotebookLM | Quiz + Explain | Core | Session D, last week's module | Delayed, scenario-based retrieval; predicted vs actual score |
+| NotebookLM | Flashcards + Explain | Core | Session D, due lines only | Spaced retrieval of your weak links |
+| NotebookLM | Delete chat history | Optional | Start of a new module | A clean thread; save `DEBRIEF` first |
+| NotebookLM | Data Table | Optional, once | {{after the module that covers most components}} | Failure matrix: fill yours on paper first, then compare |
+| NotebookLM | Mobile app | Optional | Due flashcards on the go | No scores are kept: update `Weak links` yourself |
+| NotebookLM | Mind Map | Skip | | A topic tree without causal arrows; the docs' diagrams show the flow |
+| NotebookLM | Audio Brief, Critique, Debate | Skip | | Passive; `DESIGN` practises trade-offs actively |
+| NotebookLM | Learning Guide preset | Skip | | Your Custom instructions replace it, with the four question types |
+| NotebookLM | Reports, Slide Deck | Skip | | Made for reading or presenting, not for retrieval |
+| NotebookLM | Video Overview, Infographic | Never | | Passive, and AI-drawn pictures can contradict your verified diagrams |
+| NotebookLM | Search the web for new sources (Fast / Deep Research) | Never in this notebook | | Imports unchecked web pages into the closed world; ask Gemini instead |
+| Gemini | Gem with instructions only, notebook attached in each chat | Core | Sessions B, C | One mentor persona, reusable for the next subject |
+| Gemini | Deep Research | Optional | {{at most twice in the course: name the broad topics}} | Long cited reports; check every Upgrade's source yourself |
+| Gemini | Photo upload (`REVIEW`) | Optional | {{modules without a reference diagram}} | Feedback on your drawing where the docs have no diagram |
+| Gemini | Canvas | Skip | | An AI redraw competes with your verified diagrams |
+| Gemini | Guided Learning; quizzes and flashcards in chat | Skip | | A second tutor without your rules; not grounded, no progress kept |
+| Gemini | Gemini Live | {{Skip, or Optional if the goal is interviews (framework.md §7)}} | | {{the reason, from the learner's goal}} |
+| Gemini | Scheduled actions | Skip | | Cannot read `Weak links`; a repeating calendar event is enough |
+| Gemini | Notebooks inside Gemini | Skip | | Hidden memory and a third set of instructions to maintain |
 
 **Data Table** (NotebookLM, all sources):
 ```
@@ -406,17 +426,17 @@ Columns: what it decides; what state it reads and writes; the first symptom if i
 Use only facts from the sources; write "not in sources" where they are silent.
 ```
 
-**Quiz** (Difficulty: Hard; the module's sources):
+**Quiz** (session D; Difficulty: Hard; last week's module's sources):
 ```
 Module: <module name and sections>.
 Every question must be a scenario in a running system: a symptom or a change, and the answer is the cause, the next diagnostic step, or the predicted effect. Wrong options must be plausible misdiagnoses, not obviously wrong answers.
 Never ask what something is, what it stands for, its default value, or which command or flag does something. Never ask me to recall IPs, names or ports.
 ```
 
-**Flashcards** (Standard, Hard, Text Only; the sources the weak links came from):
+**Flashcards** (session D; Fewer or Standard, Hard, Text Only; the sources the lines came from):
 ```
-Make cards only from these weak links:
-<paste the lines from the Weak links note>
+Make cards only from these weak links, which are due today:
+<paste the due lines from the Weak links note>
 Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
 Never make a definition card ("What is X?", "X is ...").
 ```
@@ -440,11 +460,19 @@ The Quiz and Flashcards topic box is a hint, not a rule. If a definition card st
 
 | Risk | Rule |
 | --- | --- |
-| NotebookLM *reduces* hallucination but does not remove it. It can misread a passage, and it reads ASCII diagrams as plain text | Click the citation behind anything surprising |
-| Gemini can be confidently wrong, especially about versions, deprecations and limits | It must label every claim (`[My docs]`, `[Source: …]`, `[Experience]`, `[Inference]`) and cite official docs with dates. `VERIFY` checks a claim before you keep it |
-| Analogies mislead beginners when only the similarities are shown | Every analogy comes with a mapping table and its breaking points, and you must find one more break yourself |
-| Switching engines mid-thought costs attention | Switch only **between phases**, carrying a [handover card](#handover-switching-engines) |
-| An open-world engine tempts you into passive reading | Gemini also asks before it tells. `CONTEXT` is the only explaining mode, and it ends with a question |
+| NotebookLM *reduces* hallucination but does not remove it. It can misread a passage, and it reads ASCII diagrams as plain text | Click the citation behind anything surprising; look at the docs' diagrams yourself |
+| Gemini can be confidently wrong, especially about versions, deprecations and limits | It labels every claim; `VERIFY` quotes the official sentence and you open the link to find it. A model rechecking its own claim is not verification |
+| Unchecked material entering the closed world: web research results, *Chats from Gemini* | Never use *Search the web* in the study notebook; keep *Chats from Gemini* unticked in every source picker |
+| AI-drawn visuals (Video, Infographic, Canvas) can contradict your verified diagrams | Draw your own, then compare it with the docs' diagrams |
+| Analogies mislead beginners when only the similarities are shown | Every analogy comes with a mapping table and two breaking points, and you find a third |
+| Switching engines mid-thought costs attention | Switch only between steps, with the handover card that `DEBRIEF` prints |
+| An open-world engine invites passive reading | Gemini asks before it tells. `CONTEXT` is the only explaining mode, and it ends with a question |
+| Nothing tracks what you got wrong, so weak links pile up and are never retested | Boxes and due dates in `Weak links`; session D reviews what is due |
+
+**Why each command sits where it does:**
+- `TRACE`, `PREDICT` and lab-scale `DIAGNOSE` must match your labs exactly, so they run in NotebookLM.
+- `INCIDENT`, `CONTEXT`, `DESIGN` and `INTERVIEW` need knowledge beyond your docs, so they run in Gemini.
+- Pictures come from the docs' verified diagrams, after you have drawn your own. `REVIEW` covers only modules without one.
 
 ### The method
 
@@ -461,53 +489,45 @@ Both engines use the same four question types. Each one connects at least two co
 
 One distinction runs through all of them: **{{CROSS_CUTTING_DISTINCTION}}.** Most good failure questions come down to it.
 
-#### The loop for each module
+#### How the week maps to the five phases
 
-Each module first builds an exact model of your own system in the closed world, then varies and stresses it in the open world:
-
-| Phase | Engine | Mode or tool | What you do | Done when |
-| --- | --- | --- | --- | --- |
-| **1. Model** | NotebookLM | Audio Overview (Deep Dive) | Listen to the module story, then **draw the model on paper from memory** | You have a drawing |
-| | Gemini | `REVIEW`, then `ANALOGY` | Upload a photo of the drawing and fix it through questions; then stress-test the model with an analogy and its breaks | You can redraw it correctly without help |
-| **2. Trace** | NotebookLM | `TRACE` | Narrate an event hop by hop; the AI only asks "what next, and who does it?" | You trace start to finish without hints |
-| **3. Break** | NotebookLM | `PREDICT`, then `DIAGNOSE` | Predict the effects of named failures, then investigate a hidden one, at lab scale | 3 predictions and 2 diagnoses, including the blast radius |
-| | Gemini | `INCIDENT` | The same mechanisms at production scale | You find the root cause and link it back to your docs |
-| **4. Extend** | Gemini | `CONTEXT`, `DESIGN`, `INTERVIEW` | Learn what current practice does differently, design a system under changing requirements, defend it | You can argue for your lab's design and for the current alternative |
-| **5. Retain and reconcile** | Both | `DEBRIEF`; Quiz and Flashcards in NotebookLM | Save weak links; verify Gemini's new facts and fold them into the docs | (repeats weekly) |
-
-**A sensible pace** is one module per week:
-- **Day 1:** Model and Trace, about 60 minutes.
-- **Day 2:** Break in NotebookLM, then `INCIDENT` in Gemini, about 45 minutes.
-- **Day 4:** `CONTEXT`, `DESIGN`, `INTERVIEW`, about 45 minutes.
-- **Day 5:** reconcile, plus a Quiz on your weak links, about 20 minutes.
-- **End of the week:** one mixed drill across every module finished so far. Alternate weeks between `CHAOS` in NotebookLM and an unscoped `INCIDENT` in Gemini.
-
-Before each NotebookLM session, tick only the module's sources (all of them for `CHAOS`), and never the **Chats from Gemini** group.
+| Phase | Session | What you do | What it builds |
+| --- | --- | --- | --- |
+| **1. Model** | A | Sketch first, listen with the reference diagram open, redraw, compare | An accurate picture of the mechanism |
+| **2. Trace** | A | `TRACE` | The causal chain, step by step |
+| **3. Break** | B | `PREDICT`, `DIAGNOSE`, then `INCIDENT` | Reasoning from cause to effect and back, at lab and production scale |
+| **4. Extend** | C | `CONTEXT`, `DESIGN` (`INTERVIEW`) | Transfer to current practice and to new designs |
+| **5. Retain** | D, and the redraw at the start of every session A | Quiz on last week, due flashcards, mixed drill | Durable memory, and an honest sense of what you know |
 
 #### Reconciling: how outside knowledge enters the docs
 
-Three notes in NotebookLM (Studio → **Add note**) carry knowledge between the engines and back into the docs:
-
 | Note | Filled by | What goes in | Where it goes next |
 | --- | --- | --- | --- |
-| `Weak links` | Both engines' `DEBRIEF` | Causal links you got wrong, as `A → B because C` | Quiz and Flashcards a few days later |
-| `Gaps` | NotebookLM (`Hand to Gemini:` lines) | Questions your docs cannot answer | Gemini, as `CONTEXT` or `INCIDENT` |
-| `Upgrades` | Gemini's `DEBRIEF`, after `VERIFY` | Facts from outside the docs, each with an official source and date | The docs: fold them into the right section, run `{{SYNC_SCRIPT_PATH}}`, re-upload the `CHANGED` files |
+| `Weak links` | Both engines' `DEBRIEF`, and your redraw comparisons | `A -> B because C (box n, due date)`; confident errors first, marked `!` | Session D, when due |
+| `Gaps` | NotebookLM's *Hand to Gemini* list | Questions your docs cannot answer | Gemini, as `CONTEXT` or `INCIDENT` |
+| `Upgrades` | Gemini's `DEBRIEF`, once you have seen the quoted sentence | At most two per module: `fact [Current practice, page, date, link]` | Once a month into the docs; then `{{DOCS_DIR}}/scripts/sync-notebooklm.sh` and re-upload the `CHANGED` files |
+
+After that, NotebookLM can test you on the new knowledge too: the open world has become part of the closed world.
 
 **When the engines disagree:**
 - **About your lab:** the docs win, unless an official source shows the doc is wrong. Then fix the doc.
-- **About the world:** a cited, dated official source wins ({{OFFICIAL_DOCS}}). Blog posts do not count.
-- **Still unresolved:** put it in `Gaps`.
+- **About the world** (current versions, current practice): a cited, dated official source wins ({{OFFICIAL_DOCS}}). Blog posts do not count.
+- **Still unresolved:** put it in `Gaps`. Asking each engine to explain the other's answer is often the fastest way to the real mechanism.
 
 #### Why this works
 
-- **Experts organise knowledge by causal principles; novices by surface features** (Chi, Feltovich & Glaser, 1981).
+- **Experts organise knowledge by causal principles; novices by surface features** (Chi, Feltovich & Glaser, 1981). The four question types force the causal organisation.
 - **You get better at what you retrieve** (testing effect: Roediger & Karpicke, 2006). So retrieve causal chains, not definitions.
-- **Explaining each step to yourself builds understanding** (self-explanation effect: Chi et al., 1989): `TRACE` and `REVIEW`.
-- **Worked examples first, problems after** (expertise reversal effect: Kalyuga et al., 2003): the audio story, then `PREDICT`, `DIAGNOSE` and `INCIDENT`.
-- **Predict, then observe, then explain** (White & Gunstone, 1992).
-- **Comparing cases builds transferable ideas** (analogical encoding: Gentner, Loewenstein & Thompson, 2003).
-- **Mixing topics teaches you to tell problems apart** (interleaving: Rohrer & Taylor, 2007).
+- **Guessing before learning primes it** (pretesting: Richland, Kornell & Kao, 2009): the 2-minute sketch in session A.
+- **Narration plus a diagram beats either alone** (modality effect: Mousavi, Low & Sweller, 1995): the audio with the reference diagram open.
+- **Explaining each step to yourself builds understanding** (self-explanation effect: Chi et al., 1989): `TRACE`.
+- **Worked examples first, problems after** (expertise reversal effect: Kalyuga et al., 2003): the audio, then `PREDICT`, `DIAGNOSE` and `INCIDENT`.
+- **Predict, then observe, then explain** (White & Gunstone, 1992). Predicting before seeing the answer exposes wrong models that rereading hides.
+- **Comparing cases builds transferable ideas** (analogical encoding: Gentner, Loewenstein & Thompson, 2003): your lab against current practice in `CONTEXT` and `DESIGN`.
+- **Spaced, repeated retrieval makes memory last** (Cepeda et al., 2006; successive relearning: Rawson & Dunlosky, 2011), and dropping an item after one correct recall hurts retention (Karpicke & Roediger, 2008): the boxes and due dates.
+- **Errors made with high confidence are the ones corrected best** (hypercorrection: Butterfield & Metcalfe, 2001): `sure:` and *Confident errors*.
+- **Smooth explanations make you overconfident** (Dunlosky & Rawson, 2012), and **judgements made after a delay are accurate** (Nelson & Dunlosky, 1991): the predicted quiz score and next week's blank redraw.
+- **Mixing topics teaches you to tell problems apart** (interleaving: Rohrer & Taylor, 2007): the weekly mixed drill and the quiz on last week's module.
 
 ### Real practice
 
@@ -533,13 +553,15 @@ QUESTION RULES (apply to every question you ask)
 6. Scenarios may show names, IPs and ports from the labs, but never ask me to recall them.
 7. Stay inside the sources. If you reason beyond them, start that part with "Inference:". If a question needs knowledge the sources do not have (other designs, newer versions, production scale), do not answer it: write "Hand to Gemini:" followed by the question, so I can take it there.
 8. If my message starts with HANDOVER, aim your first questions at the links I got wrong and the open question in it.
+9. If I start an answer with "sure:" and any part of it is wrong, mark that part "Confident error". "guess:" means I am unsure.
+10. If I write in Vietnamese, explain in Vietnamese, but keep technical terms and your questions in English.
 
 MODES (my message starts with one keyword)
 TRACE <event>: I narrate what happens step by step. After each step ask what happens next and which component does it, and make me say what changes at that hop. When the chain is complete, summarise it as numbered steps and list the links I missed.
 PREDICT <failure>: Before revealing anything, ask me to predict: what breaks immediately, what keeps working, what breaks later, and what users see. Then reveal the real chain of effects with citations and score my prediction link by link.
 DIAGNOSE <topic>: Choose a failure from the mechanisms in the sources but do not tell me what it is. Give only the first symptom, as an alert or a user report. I ask for evidence ({{LAB_EVIDENCE}}); answer each request with realistic output consistent with the hidden failure. When I name the root cause, score my investigation (did I check the right layer first? what would have been faster?), then ask for the fix and how to prevent it.
 CHAOS: Like DIAGNOSE, but pick the failure from any topic in the selected sources and do not tell me which topic it belongs to.
-DEBRIEF: Give two lists. "Weak links": every causal link I got wrong or missed in this conversation, one per line, as "A -> B because C". "Hand to Gemini": every question from this conversation that the sources could not answer.
+DEBRIEF: Give three lists. "Confident errors": links I got wrong in answers I started with "sure:". "Weak links": every other causal link I got wrong or missed in this conversation. Write each as one line: "A -> B because C (box 1)". "Hand to Gemini": every question from this conversation that the sources could not answer. Then print, in a code block, a five-line handover card: "HANDOVER from NotebookLM, Module <n>: <name>", "Model in one sentence:" (leave it empty for me), "Links I got wrong: <confident errors first>", "Open question: <the most important Hand to Gemini question>", "Next: <the Gemini mode and topic to run next>".
 ```
 
 ## Appendix B: Gemini instructions
@@ -559,14 +581,16 @@ TEACHING RULES
 5. Never ask definition questions ("What is X?", "Define X", "List the ...", default values, command flags). Every question must connect components and be about who decides, the path, failure, or a design trade-off.
 6. After each answer: mark it Correct, Partly correct or Wrong, name the missing causal link, then go one level deeper.
 7. If my message starts with HANDOVER, aim your first questions at the links I got wrong and the open question in it.
+8. If I start an answer with "sure:" and any part of it is wrong, mark that part "Confident error". "guess:" means I am unsure.
+9. If I write in Vietnamese, explain in Vietnamese, but keep technical terms and your questions in English.
 
 MODES (my message starts with one keyword)
 ANALOGY <concept>: Give one analogy from outside {{SUBJECT}} ({{ANALOGY_DOMAINS}}, or a system I already know). Show the mapping as a table: analogy element -> {{SUBJECT}} element. Then name two places where the analogy breaks and the misconception each break could cause. Then ask me to find a third break.
-REVIEW: I upload a photo or sketch of my diagram. Do not redraw it yet. First say what is correct, then ask questions, one at a time, that lead me to the missing or wrong components and links. Only after I have fixed it, show your version as an ASCII diagram (or an interactive diagram in Canvas if I ask) with numbered steps, and point out where it differs from my docs.
+REVIEW: I upload a photo of my diagram. Do not redraw it yet. First say what is correct, then ask questions, one at a time, that lead me to the missing or wrong components and links. Only after I have fixed it, show your version as an ASCII diagram with numbered steps, and point out where it differs from my docs.
 CONTEXT <topic>: Explain how this is done in production today compared with my docs: the alternatives, what changed and why, what teams usually choose, and the trade-offs. Cite sources. Stay under 400 words. End with one question that makes me compare my lab with current practice.
-INCIDENT <topic>: Run an on-call incident drill at production scale ({{PRODUCTION_CONTEXT}}). Do not reveal the cause. Give the first alert or user report; I ask for evidence ({{PROD_EVIDENCE}}); answer with realistic output consistent with the hidden cause. When I name the root cause, score my investigation, then ask for the mitigation now, the permanent fix, and prevention. Finally, link the incident back to the mechanism in my docs. Without a topic, pick any area.
+INCIDENT <topic>: Run an on-call incident drill at production scale ({{PRODUCTION_CONTEXT}}). Do not reveal the cause. Give the first alert or user report; I ask for evidence ({{PROD_EVIDENCE}}); answer with realistic output consistent with the hidden cause. When I name the root cause, score my investigation, then ask for the mitigation now, the permanent fix, and prevention. Then link it back to the mechanism in my docs. Without a topic, pick any area.
 DESIGN <brief>: Expand the brief into realistic requirements (traffic, team size, budget, compliance). I propose a design; challenge it with one new requirement at a time (10x traffic, a zone or region outage, a security review, a cost cut). Make me justify each choice against at least one alternative. End by comparing my design with a reference design and naming the trade-offs.
-INTERVIEW <topic>: Act as a senior {{INTERVIEW_ROLE}} interviewer. Mix questions about my labs with production scenarios. Follow up on trade-offs, failure modes, security and cost, and challenge me at least once even when I am right. End with feedback: strengths, gaps, and a hire or no-hire signal with reasons.
-VERIFY <claim>: Check the claim against official documentation and my docs. Answer True, Partly true, False or Outdated, with the sources and their dates, and give the corrected statement.
-DEBRIEF: Give two lists. "Weak links": every causal link I got wrong in this conversation, one per line, as "A -> B because C". "Upgrades": every verified fact from outside my docs worth adding to them, one per line, with its source link and date.
+INTERVIEW <topic>: Act as a senior {{INTERVIEW_ROLE}} interviewer. Mix questions about my labs with production scenarios. Follow up on trade-offs, failure modes, security and cost, and challenge me at least once even when I am right. End with feedback: strengths, gaps, and what to study next.
+VERIFY <claim>: Check the claim against official documentation and my docs. Answer True, Partly true, False or Outdated. Quote the exact sentence from the official page that decides it, with the page title, date and link, so I can find it myself. If no official page says it, answer "Unverified". Then give the corrected statement.
+DEBRIEF: Give three lists. "Confident errors" and "Weak links", one line each: "A -> B because C (box 1)". "Upgrades": at most two facts from outside my docs worth adding to them, each as "<fact> [Current practice, <page title>, <date>, <link>]". Then print a handover card in a code block, in the same five-line format as the HANDOVER card I sent you, from Gemini, with "Model in one sentence:" left empty for me.
 ```
