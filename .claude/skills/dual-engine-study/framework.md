@@ -54,41 +54,43 @@ Banned in both engines:
 
 Each subject also has a **cross-cutting distinction** that most failure questions reduce to (§9).
 
-## 4. The weekly loop
+## 4. The learner's workflow: Learn, then Review
 
-One module per week (two weeks on the smallest budget). Within a module the closed world comes first, so there is one exact case; the open world follows, so it can be compared with others.
+The study guide's first screen holds only two tables, *Learn a module* and *Review*, plus a few rules and tips. It says **what to do with which tool**, and **when to review**. It does not allocate the learner's time: they decide when and how long they study.
 
-| Phase | What the learner does | What it builds |
-| --- | --- | --- |
-| **1. Model** | Sketch from what they already know → Deep Dive audio (Short) with the docs' diagram open → redraw from memory → mark the differences in red | An accurate picture of the mechanism |
-| **2. Trace** | `TRACE` in NotebookLM | The causal chain, step by step |
-| **3. Break** | `PREDICT` and `DIAGNOSE` in NotebookLM, then `INCIDENT` in Gemini | Reasoning from cause to effect and back |
-| **4. Extend** | `CONTEXT`, `DESIGN` (and `INTERVIEW`, depending on the goal) in Gemini | Transfer to current practice and to new designs |
-| **5. Retain** | Next week's blank redraw; Quiz on *last* week's module; due flashcards; a mixed drill | Durable memory, and an honest sense of what is known |
+**Learn a module.** In order, in as many sittings as the learner likes:
 
-**Session plans by weekly time.** Sessions are at least a day apart. Pick the plan at intake (SKILL.md step 1):
+| # | Step | Where | What the learner does | Principle |
+| --- | --- | --- | --- | --- |
+| 1 | Guess | Paper | Sketches the system from what they already know, 2 minutes | Pretesting / generation |
+| 2 | Listen | NotebookLM Audio Overview (Deep Dive, Short) | Listens with the docs' diagrams open | Dual coding / modality; worked example |
+| 3 | Rebuild | Paper | Redraws from memory, compares with the diagrams, marks differences in red | Retrieval with immediate feedback |
+| 4 | Explain | NotebookLM chat | `TRACE` | Self-explanation |
+| 5 | Break | NotebookLM chat | `PREDICT` ×3, then `DIAGNOSE`, then `DEBRIEF` | Predict, observe, explain |
+| 6 | Connect | Gemini | Handover card, then `INCIDENT`, `CONTEXT`, `DESIGN`, then `DEBRIEF` | Comparing cases builds transfer |
+| 7 | Save | Notes | Mistakes → `Weak links`; open questions and checked facts → `For Gemini & docs` | Errors become retrieval cues |
 
-| Weekly time | Sessions |
-| --- | --- |
-| **Under 2 h** | **A** (60': redraw last week, sketch, audio with diagram, redraw, `TRACE`) and **D** (40': `PREDICT` ×2, due flashcards, Quiz on last week). No Gemini sessions except `INCIDENT` every other week. One module takes about two weeks |
-| **2.5–3 h** | **A** (55') as above; **B** (50': `PREDICT` ×2, `DIAGNOSE` ×1, then Gemini `INCIDENT` and `CONTEXT`); **C+D** (35': Quiz on last week, due flashcards, mixed drill) |
-| **4–5 h** (the Kubernetes guide) | **A** Model + Trace (60'); **B** Break (60': `PREDICT` ×3, `DIAGNOSE` ×1–2, `INCIDENT`); **C** Extend (55': `CONTEXT`, `DESIGN`, optional `INTERVIEW`); **D** Retain (40': Quiz on last week, due flashcards, mixed drill) |
+**Review.** The day after (sleep consolidates memory), about a week later, and about a month later. Review by retrieval only, never by rereading or re-listening:
 
-Every plan adds **once a month** about 20 minutes: fold `Upgrades` into the docs, run the sync script, re-upload `CHANGED` files.
+| Step | Where | What | Principle |
+| --- | --- | --- | --- |
+| Redraw | Paper | Blank-page redraw, then compare; each miss becomes a `Weak links` line | Delayed retrieval; delayed judgement is accurate |
+| Quiz | NotebookLM Quiz (Hard) | Scenario quiz on the module; **Explain** on every wrong answer | Testing effect with feedback |
+| Weak links | NotebookLM Flashcards | Cards from all lines. Right → add ✓; wrong → clear its ✓s; three ✓ (right in three different reviews) → delete the line | Successive relearning |
+| Mix | NotebookLM `CHAOS` or Gemini `INCIDENT` without a topic | From the second module on, one mixed drill per review | Interleaving |
 
-**Spacing.** NotebookLM keeps no scores, so the `Weak links` note is the schedule. Each line reads `A -> B because C (box n, due YYYY-MM-DD)`:
+At the one-month review, the checked facts in `For Gemini & docs` are folded into the docs (with the user's consent), then synced.
 
-| Result when due | New box | Next due |
-| --- | --- | --- |
-| Wrong | 1 | next week |
-| Right in box 1 | 2 | in 2 weeks |
-| Right in box 2 | 3 | in 4 weeks |
-| Right in box 3 | — | delete the line |
+**Tips, not steps:** the guide lists these as optional one-liners:
+- `sure:` / `guess:` (a wrong `sure:` answer is a *Confident error*, marked `!`);
+- writing down the expected quiz score;
+- `hint` / `reveal`;
+- asking in the learner's language;
+- `ANALOGY` and `INTERVIEW`;
+- Delete chat history at a new module;
+- `REVIEW` for modules without a diagram.
 
-**Calibration:**
-- The learner starts answers with `sure:` or `guess:`. A wrong `sure:` answer is a *Confident error*; these go to the top of `Weak links`, marked `!`.
-- The learner writes a predicted Quiz score before each quiz and the real score after it.
-- Each session A opens with a blank redraw of last week's model, instead of a self-judged "done".
+**Why this shape:** practice testing and distributed practice are the highest-utility learning techniques; rereading, highlighting and summarising are the lowest (Dunlosky et al., 2013). Every step retrieves, explains or predicts; none only re-exposes the learner to the material.
 
 ## 5. Handover, reconcile, conflicts
 
@@ -101,18 +103,17 @@ Open question: <one>
 Next: <MODE> <topic>
 ```
 
-**Three NotebookLM notes** carry knowledge between the engines:
+**Two NotebookLM notes** carry knowledge between the engines:
 
 | Note | Filled by | Goes to |
 | --- | --- | --- |
-| `Weak links` (`A -> B because C (box n, due date)`; `!` = confident error) | Both engines' `DEBRIEF`, and the redraw comparisons | Session D, when due |
-| `Gaps` | NotebookLM's *Hand to Gemini* lines | Gemini `CONTEXT` / `INCIDENT` |
-| `Upgrades` (`fact [Current practice, page, date, link]`) | Gemini's `DEBRIEF`, at most two per module, kept only once the learner has opened the link and found the quoted sentence | The docs once a month (with the user's consent), then sync and re-upload of `CHANGED` files |
+| `Weak links` (`A -> B because C`; `!` = confident error; ✓ per correct review) | Both engines' `DEBRIEF`, and the redraw comparisons | Flashcards at every review |
+| `For Gemini & docs` | NotebookLM's *Hand to Gemini* lines; Gemini's *Upgrades* (`fact [Current practice, page, date, link]`), at most two per module, kept only once the learner has opened the link and found the quoted sentence | Questions → Gemini `CONTEXT` / `INCIDENT`; facts → the docs at the one-month review (with the user's consent), then sync and re-upload of `CHANGED` files |
 
 **Conflict rule:**
 - About the learner's lab: the docs win, unless an official source proves them wrong; then fix the doc.
 - About the world: a dated official source wins; blogs do not count.
-- Unresolved: it goes to `Gaps`.
+- Unresolved: it goes to `For Gemini & docs`.
 
 ## 6. Guard rails
 
@@ -120,14 +121,14 @@ Next: <MODE> <topic>
 | --- | --- |
 | NotebookLM reduces hallucination but does not remove it, and misreads ASCII diagrams | Check the citation behind anything surprising; the learner looks at the docs' diagrams directly |
 | Gemini is confidently wrong about versions and limits | Label every claim; cite official docs with dates; `VERIFY` quotes the deciding sentence |
-| A model rechecking its own claim is not verification | The learner opens the link and finds the quoted sentence before anything enters `Upgrades` |
+| A model rechecking its own claim is not verification | The learner opens the link and finds the quoted sentence before a fact enters `For Gemini & docs` |
 | Unchecked material enters the closed world: *Search the web* imports, *Chats from Gemini*, notes converted to sources | Never use *Search the web* in the study notebook; untick *Chats from Gemini* in every source picker, Studio dialogs included; never **Convert to source** a study note |
 | AI-drawn visuals (Video, Infographic, Canvas) can contradict verified diagrams | The learner draws first, then compares with the docs' diagrams |
 | Analogies mislead beginners | Mapping table, 2 breaks with the misconception each causes, and the learner finds a third |
 | Switching engines costs attention | Switch only between steps, with the card `DEBRIEF` prints |
 | The open world invites passive reading | Gemini asks before it tells; `CONTEXT` is the only explaining mode and ends with a question |
-| AI-generated quizzes and cards drift to definitions | Scenario-only prompts; skip definition cards; flashcards only from due `Weak links` lines |
-| Without tracking, weak links pile up and are never retested | Boxes and due dates (§4) |
+| AI-generated quizzes and cards drift to definitions | Scenario-only prompts; skip definition cards; flashcards only from `Weak links` lines |
+| Without tracking, weak links pile up and are never retested | ✓ marks, and flashcards from all lines at every review (§4) |
 
 ## 7. Tool selection
 
@@ -147,11 +148,11 @@ Tools are chosen for the learner, not because they exist. Every feature of both 
 | NotebookLM | Audio Overview: Deep Dive, Short, with the docs' diagram open | Core | Worked example; narration with a diagram beats either alone |
 | NotebookLM | Join | Optional | One hop confuses the learner |
 | NotebookLM | Notes, Save to note | Core | `Weak links` is the only progress record |
-| NotebookLM | Quiz + Explain | Core | Delayed scenario retrieval on last week's module; predicted vs actual score |
-| NotebookLM | Flashcards + Explain | Core | Spaced retrieval of due `Weak links` lines |
+| NotebookLM | Quiz + Explain | Core | Scenario retrieval at every review, with feedback |
+| NotebookLM | Flashcards + Explain | Core | Successive relearning of the `Weak links` lines at every review |
 | NotebookLM | Delete chat history | Optional | Start of a new module, after `DEBRIEF` is saved |
 | NotebookLM | Data Table | Optional, once | Failure matrix after the module covering most components; paper first |
-| NotebookLM | Mobile app | Optional | Due flashcards on the go; no scores kept |
+| NotebookLM | Mobile app | Optional | Review flashcards on the go; no scores kept |
 | NotebookLM | Mind Map | Skip | Topic tree without causal arrows; the docs' diagrams show the flow |
 | NotebookLM | Audio Brief, Critique, Debate | Skip | Passive; `DESIGN` practises trade-offs actively |
 | NotebookLM | Learning Guide preset | Skip | Replaced by the Custom instructions |
@@ -176,6 +177,7 @@ Tools are chosen for the learner, not because they exist. Every feature of both 
 
 ## 8. Research basis
 
+- **Which techniques work:** practice testing and distributed practice rate highest, rereading, highlighting and summarising lowest (Dunlosky et al., 2013): the whole workflow.
 - **Experts organise knowledge by causal principles; novices by surface features** (Chi, Feltovich & Glaser, 1981): the four question types.
 - **You get better at what you retrieve** (testing effect: Roediger & Karpicke, 2006): retrieve causal chains, not definitions.
 - **Guessing before learning primes it** (pretesting: Richland, Kornell & Kao, 2009): the sketch before the audio.
@@ -184,10 +186,12 @@ Tools are chosen for the learner, not because they exist. Every feature of both 
 - **Worked examples first, problems after** (expertise reversal effect: Kalyuga et al., 2003): audio first, then `PREDICT` / `DIAGNOSE` / `INCIDENT`.
 - **Predict, then observe, then explain** (White & Gunstone, 1992): `PREDICT`.
 - **Comparing cases builds transferable ideas** (analogical encoding: Gentner, Loewenstein & Thompson, 2003): the lab against current practice.
-- **Spaced, repeated retrieval makes memory last** (Cepeda et al., 2006; successive relearning: Rawson & Dunlosky, 2011); dropping an item after one correct recall hurts retention (Karpicke & Roediger, 2008): boxes and due dates.
+- **Spaced, repeated retrieval makes memory last** (Cepeda et al., 2006; successive relearning: Rawson & Dunlosky, 2011); dropping an item after one correct recall hurts retention (Karpicke & Roediger, 2008): three reviews, and ✓ marks until three correct recalls.
 - **High-confidence errors are the ones corrected best** (hypercorrection: Butterfield & Metcalfe, 2001): `sure:` and *Confident errors*.
 - **Smooth explanations make learners overconfident** (Dunlosky & Rawson, 2012); **delayed judgements are accurate** (Nelson & Dunlosky, 1991): predicted vs actual quiz scores, next week's blank redraw.
-- **Mixing topics teaches discrimination** (interleaving: Rohrer & Taylor, 2007): the mixed drill and the quiz on last week's module.
+- **Sleep consolidates new memories** (Diekelmann & Born, 2010): the first review comes the day after.
+- **Effortful learning lasts; easy feels good but fades** (desirable difficulties: Bjork, 1994): "It should feel hard".
+- **Mixing topics teaches discrimination** (interleaving: Rohrer & Taylor, 2007): the mixed drill.
 
 ## 9. Adapting to a new subject
 
@@ -214,7 +218,7 @@ Verified 2026-11-07 and 2026-11-08 (UI details against the user's screenshots on
 - **Name:** the app's footer reads "Gemini Notebook"; third-party guides say NotebookLM was renamed in July 2026. The URL and the guides still say NotebookLM.
 - **Gemini chats as sources:** Gemini conversations that use the notebook appear in the Sources panel as a **Chats from Gemini** group, and **Select all** ticks them too.
 - **Search the web for new sources:** the box at the top of the Sources panel (**Web**, **Fast Research** or **Deep Research**) finds web pages and can import them, and a Deep Research report, as sources.
-- **Notes:** each note has a **Convert to source** button (seen 2026-11-08) that turns it into a source. Study notes (`Weak links`, `Gaps`, `Upgrades`) must never be converted.
+- **Notes:** each note has a **Convert to source** button (seen 2026-11-08) that turns it into a source. Study notes (`Weak links`, `For Gemini & docs`) must never be converted.
 - **Chat history:** each notebook has one saved chat thread per person. **⋮** → **Delete chat history** clears all of it; single messages cannot be deleted. **Save to note** sits under each reply, and **Add note** at the bottom of the Studio panel.
 - **Audio Overview:** formats Deep Dive, Brief, Critique and Debate; lengths Short, Default and Long. Interactive **Join** reportedly works for Deep Dive only, and in English.
 - **Video Overview:** formats Explainer, Short and Cinematic, in AI-generated visual styles; generating one can take 30 minutes or more.
@@ -261,7 +265,9 @@ Sources:
 - **`PREDICT` failures the docs never describe** make NotebookLM improvise. Grep first; move them to Gemini.
 - **Prompts asserting version facts** ("X is GA since …") go stale and get repeated as truth. Name topics; let Gemini verify.
 - **A model "verifying" its own claim.** Only the quoted sentence on the official page, seen by the learner, counts.
-- **`Weak links` without a schedule** pile up and are never retested; use boxes and due dates.
+- **`Weak links` without a review rule** pile up and are never retested; review them all at every review, with ✓ marks.
+- **A guide written as a method spec instead of a learner workflow.** At 830 lines, with sessions, minutes and theory, the learner felt overwhelmed: *"tôi chỉ quan tâm tôi cần dùng tool làm gì để học thôi"*. The study guide now opens with the Learn and Review tables only; setup and samples live in a separate file; theory lives here.
+- **Allocating the learner's time unasked** (sessions, minutes, weekly plans). Say what to do and when to review; the learner plans their own time.
 - **Guessing where a button is.** UI steps come only from the user's screenshots or dated sources.
 - **Uploading the study guide itself as a source** makes the AI quiz about the method. Keep it out of the notebook.
 - **Asking the learner to recall IPs, ports or names from labs** is trivia. Scenarios may *show* them, but questions never ask for them.

@@ -1,6 +1,6 @@
 ---
 name: dual-engine-study
-description: 'Design a dual-engine study guide for a complex IT subject (AWS, Kubernetes, networking, databases, ...). NotebookLM is the closed-world tutor, grounded in the learner''s own docs; Gemini is the open-world mentor for current practice, production incidents, design and interviews. Produces a study guide saved in this skill''s examples/<subject>-study-guide.md (mental-model modules; paste-ready NotebookLM and Gemini instructions; TRACE / PREDICT / DIAGNOSE / INCIDENT / DESIGN / INTERVIEW starters) and a NotebookLM sync script. Use when the user wants to study or review a subject with NotebookLM and/or Gemini, start a learning plan for a new subject, or extend an existing dual-engine guide with a module.'
+description: 'Design a dual-engine study guide for a complex IT subject (AWS, Kubernetes, networking, databases, ...). NotebookLM is the closed-world tutor, grounded in the learner''s own docs; Gemini is the open-world mentor for current practice, production incidents, design and interviews. Produces two files in this skill''s examples/: <subject>-study-guide.md (a Learn / Review workflow saying what to do with which tool, plus mental-model modules whose paste-ready prompts are grouped by step) and <subject>-setup.md (one-time setup, command samples, the NotebookLM and Gemini instructions), plus a sync config for the shared NotebookLM sync script. Use when the user wants to study or review a subject with NotebookLM and/or Gemini, start a learning plan for a new subject, or extend an existing dual-engine guide with a module.'
 allowed-tools: Read, Glob, Grep, Bash, Write, Edit, WebSearch, WebFetch, AskUserQuestion
 argument-hint: '<subject> [docs-dir]'
 ---
@@ -17,8 +17,8 @@ Act as an **expert IT educator and senior cloud architect**:
 
 **Read before writing anything:**
 1. [`framework.md`](framework.md): the method (principles, engine split, loop, handover, reconcile, guard rails, how to adapt it to a new subject, dated engine facts). Mandatory.
-2. The worked example [`examples/kubernetes-study-guide.md`](examples/kubernetes-study-guide.md) (Kubernetes; its docs are in `~/Documents/Devops/K8s/documents/`): the reference for depth, tone and format. Match it.
-3. [`templates/guide-template.md`](templates/guide-template.md) and [`templates/sync-notebooklm.sh`](templates/sync-notebooklm.sh).
+2. The worked example [`examples/kubernetes-study-guide.md`](examples/kubernetes-study-guide.md) and [`examples/kubernetes-setup.md`](examples/kubernetes-setup.md) (Kubernetes; its docs are in `~/Documents/Devops/K8s/documents/`): the reference for depth, tone and format. Match it.
+3. [`templates/study-guide-template.md`](templates/study-guide-template.md), [`templates/setup-template.md`](templates/setup-template.md), [`templates/sync.conf`](templates/sync.conf), and the shared script [`scripts/sync-notebooklm.sh`](scripts/sync-notebooklm.sh).
 
 ## Workflow
 
@@ -28,7 +28,6 @@ Ask in **one** AskUserQuestion, only for what is unknown:
 - **Goal:** understand the subject for work, interviews, or a certification. It sets the goal-dependent switches in `framework.md` §7.
 - **Corpus:** where the docs are.
 - **Level:** current level in the subject.
-- **Time:** hours per week. It picks the session plan in `framework.md` §4.
 
 Defaults, unless the user says otherwise:
 - study materials and prompts in English;
@@ -62,7 +61,7 @@ Also name the subject's **cross-cutting distinction**, the lens most failure que
 Follow the template block. In order:
 
 1. **Model.**
-2. **NotebookLM sources:** the flat names from the sync script.
+2. **NotebookLM sources:** the flat names from the sync config.
 3. **NotebookLM:**
    - Deep Dive audio prompt;
    - one `TRACE` event;
@@ -71,30 +70,34 @@ Follow the template block. In order:
 4. **Reference diagrams:** the corpus's own diagrams that show this module's flow, as short name + section.
    - Find them with a scan of fenced blocks that contain box-drawing characters (`┌ │ ─ ═ ▶`) or arrows, plus Markdown images, grouped by heading.
    - Check that every section you name exists.
-   - A module without any: write "none in the docs yet", use Gemini `REVIEW` in session A instead, and add the missing diagram to `Gaps`. Offer the user to draw it in the docs.
+   - A module without any: write "none in the docs yet", use Gemini `REVIEW` at Learn step 3 instead, and add the missing diagram to `For Gemini & docs`. Offer the user to draw it in the docs.
 5. **Gemini:** `INCIDENT`, `CONTEXT`, `DESIGN` and `INTERVIEW` starters, plus an optional `ANALOGY`.
-6. **Done when:** 2–3 abilities, never "read X". Next week's blank redraw checks them.
+6. **Done when:** 2–3 abilities, never "read X". The blank redraw at each review checks them.
 
 **Grounding rule:** for every `PREDICT` failure, `grep` the corpus for its mechanism. If the corpus does not describe it, move it to a Gemini `INCIDENT`. An `INCIDENT` starter gives a symptom only, never the cause.
 
 **Gemini starters name topics; they never assert versions, dates, limits or prices.** Gemini verifies those itself, with sources.
 
-### 5. Write the learner's operating manual (Parts 1–3)
+### 5. Write the two learner files
 
-The learner is new to NotebookLM and Gemini. Before any module, the guide must let them picture every click and every exchange:
-- **Part 1, one-time setup, click by click.** Copy UI paths only from `framework.md` → *Engine facts*, which are verified from screenshots or dated sources. Say which steps are unverified and ask for a screenshot.
-- **Part 2, the week, session by session**, using the session plan for the learner's weekly time (`framework.md` §4). For each step: which panel, which button, which dialog field, which prompt to paste, and what to copy into which note afterwards. Include:
-  - the source-setting checklist, Studio dialogs included;
-  - the `Weak links` box schedule;
-  - the predicted vs actual quiz score;
-  - the monthly reconcile.
-- **Part 5, tools:** the §7 decision table for the learner's goal, with a "why" per row, Skip and Never included, so the learner sees what was left out on purpose.
-- **Part 3, one sample exchange per command** (`TRACE`, `PREDICT`, `DIAGNOSE`, `DEBRIEF`, `HANDOVER`, `INCIDENT`, `CONTEXT`, `DESIGN` / `INTERVIEW`, `VERIFY`, `ANALOGY` / `REVIEW`), showing `sure:` / `guess:` and a *Confident error*:
-  - rewritten with the subject's own Module 1 prompts;
-  - 4–8 lines each;
-  - `…` wherever a real answer would spoil a `PREDICT` item.
+Workflow, not spec. The learner should see **what to do with which tool**, not a description of the method. They are new to NotebookLM and Gemini, and they plan their own time.
 
-Theory comes last (Part 6), and the instruction blocks go in the appendices.
+**`examples/<subject>-study-guide.md`**, from `templates/study-guide-template.md`, opened at every study or review:
+- **First screen, and nothing else on it:**
+  - the **Learn a module** table (7 steps: where, what, a few words of why);
+  - the **Review** table (the day after, about a week, about a month; redraw, quiz, `Weak links` flashcards with ✓ marks, mixed drill);
+  - **Always** (source hygiene, citations, "it should feel hard");
+  - **Tips** (optional one-liners);
+  - one line naming the tools not used on purpose.
+- **Modules:** each with its model, the files to tick and the diagrams, then prompts **grouped by Learn step**: Listen, Explain, Break, Connect.
+- **Not in this file:** time allocation (no sessions, minutes or weekly plans), theory, the tool decision table, command samples, instructions.
+
+**`examples/<subject>-setup.md`**, from `templates/setup-template.md`, used once or as a lookup:
+- **Setup, click by click.** Copy UI paths only from `framework.md` → *Engine facts*, which are verified from screenshots or dated sources. Say which steps are unverified and ask for a screenshot.
+- **The two notes** (`Weak links`, `For Gemini & docs`), and what the sync script does.
+- **Commands:** one sample exchange per command, rewritten with the subject's Module 1, 4–8 lines each, with `…` wherever a real answer would spoil a `PREDICT` item.
+- **Studio settings and prompts:** Audio, Quiz, Flashcards, and an optional Data Table.
+- **Appendix A/B:** the instruction blocks.
 
 ### 6. Fill the two instruction blocks
 
@@ -113,13 +116,16 @@ Check the lengths:
 
 ### 7. Set up the sync
 
-1. Copy `templates/sync-notebooklm.sh` to `<docs>/scripts/sync-notebooklm.sh`.
-2. Fill in:
-   - `NOTEBOOK_DIR_NAME`;
-   - `SOURCES`, with flat names that carry their origin (`lab-2-…`, `lab-3-step-05-…`);
-   - `SKIP`: app source code, and anything else in the docs folder that is not study material (also the guide, if the user chose to keep it next to the docs).
-3. `chmod +x`, run it, and confirm there is no `NOT LISTED`.
-4. If `<docs>` is a git repo, git-ignore the copy folder.
+The skill ships **one** script, `scripts/sync-notebooklm.sh`, for every subject; each subject needs only a config. Nothing is copied into the docs repo.
+
+1. Copy `templates/sync.conf` to `examples/<subject>-sync.conf`, next to the guide, and fill in:
+   - `docs`: the docs folder;
+   - `dest`: a copy folder inside it, `<docs>/notebooklm-<subject>`;
+   - one `source = path | flat-name` line per uploaded file, with flat names that carry their origin (`lab-2-…`, `lab-3-step-05-…`);
+   - `skip` lines for app source code and anything else that is not study material (also the guide, if the user keeps it next to the docs).
+2. Run `scripts/sync-notebooklm.sh <subject>` and confirm there is no `NOT LISTED`.
+3. If `<docs>` is a git repo, git-ignore the copy folder there.
+4. The guide calls the script as `~/.claude/skills/dual-engine-study/scripts/sync-notebooklm.sh <subject>`, and the setup file says what it does and who keeps the list up to date.
 
 ### 8. Re-verify the engine facts
 
@@ -137,31 +143,30 @@ NotebookLM and Gemini change every few months.
 - [ ] No definition-style question appears anywhere ("What is", "Define", "List the").
 - [ ] Every `PREDICT` failure is grounded in the corpus.
 - [ ] Each module builds only on earlier ones, and every prompt is paste-ready English inside a code block.
-- [ ] The parts are in order: operations (Parts 1–3), then material (Parts 4–5), then theory (Part 6).
-- [ ] Every command used in the modules has a sample in Part 3, and every UI step is verified or marked unverified.
+- [ ] The study guide's first screen is only the Learn and Review tables, Always and Tips: no theory, no sessions or minutes.
+- [ ] Every command used in the modules has a sample in the setup file's Commands, and every UI step is verified or marked unverified.
 - [ ] Every module has a **Reference diagrams** line, and every section it names exists in the docs.
-- [ ] Part 5 rates every feature from `framework.md` §7, and no Skip or Never tool appears in Parts 1–4.
-- [ ] The sessions add up to the learner's weekly time.
+- [ ] No tool rated Skip or Never in `framework.md` §7 appears in either file, except in the "not used on purpose" line.
 
 ### 10. Hand over
 
 Tell the user:
 - what was built;
 - the setup steps;
-- the first session to run (Module 1, session A);
+- what to do first (Module 1, Learn step 1);
 - anything not verified.
 
 If the instruction blocks changed, put Appendix A on the clipboard (`xclip -selection clipboard`) and tell the user to paste it again into **Configure Chat**, then Appendix B into the Gem.
 
 Then:
-- save a project memory recording the subject, the guide path and the sync script, with the rule "update `SOURCES` when docs are added, renamed or deleted";
+- save a project memory recording the subject, the guide path and the sync config (`examples/<subject>-sync.conf`), with the rule "update its `source` / `skip` lines when docs are added, renamed or deleted";
 - do not commit; offer to.
 
 ## Extending an existing guide
 
 Examples: a new module once a doc section is written, or a new source.
-- Apply steps 4, 6 and 9 to the existing guide, keeping its structure. Add a Part 3 sample if the change introduces a new command.
-- Update the sync script's `SOURCES` / `SKIP`, run it, and tell the user which files to re-upload.
+- Apply steps 4, 6 and 9 to the existing files, keeping their structure. Add a sample to the setup file's Commands if the change introduces a new command.
+- Update `examples/<subject>-sync.conf` (`source` / `skip` lines), run `scripts/sync-notebooklm.sh <subject>`, and tell the user which files to re-upload.
 
 ## Hard rules
 
@@ -174,11 +179,12 @@ These were learned on the Kubernetes guide:
 - **Choose tools for the learner, not because they exist.** Rate every feature with `framework.md` §7 before the guide mentions it. The user, after tools had been added one question at a time: *"Ko phải là khi nào tôi thấy thiếu và hỏi thì bạn mới nghĩ ra… trọng tâm là người học"*.
 - **Pictures come from the docs' verified diagrams, after the learner draws.** AI-drawn visuals (Video, Infographic, Canvas) never replace them; `REVIEW` is only for modules without one.
 - **Verification means the learner reads the quoted sentence on the official page.** A model rechecking its own claim does not count.
-- **Weak links need a schedule** (boxes and due dates), because NotebookLM keeps no scores.
+- **Weak links need a review rule** (all lines at every review; ✓ per correct answer; three ✓ and the line goes), because NotebookLM keeps no scores.
 - **Gemini labels its claims** (`[My docs]` / `[Source: …]` / `[Experience]` / `[Inference]`) and cites dated official docs.
 - **`Upgrades` enter the docs only after the learner has seen the quoted official sentence, and with the user's consent:** at most two per module, folded in monthly. Some doc sections may be user-owned.
-- **The guide is never uploaded to NotebookLM.** It lives in this skill's `examples/`, or in `SKIP` if kept next to the docs.
+- **The guide is never uploaded to NotebookLM.** It lives in this skill's `examples/`, or as a `skip` line in the sync config if kept next to the docs.
 - **Write the guide as a spec:** present tense, no session history, kebab-case file names.
-- **Operations before theory.** The first Kubernetes guide explained the method well but not the clicks. The user: *"cách viết hiện tại của m làm t ko hình các thao tác sẽ ra sao. T là người mới dùng notebooklm và gemini mà"*. Every guide now opens with Parts 1–3.
+- **Workflow, not spec.** For each stage, say what to do with which tool; leave the method's theory in `framework.md`, and never plan the learner's time. The user, on the 830-line guide: *"tôi bị ngộp vì quá nhiều… tôi chỉ quan tâm tôi cần dùng tool làm gì để học thôi"*; and *"đâu cần thiết bạn tính thời gian cho tôi"*.
+- **Operations before theory.** The first Kubernetes guide explained the method well but not the clicks. The user: *"cách viết hiện tại của m làm t ko hình các thao tác sẽ ra sao. T là người mới dùng notebooklm và gemini mà"*. The setup file walks through every click, and the setup file's Commands show every exchange.
 - **Never guess where a button is.** Describe UI steps only from the user's screenshot or a dated source, and record them in `framework.md` → *Engine facts*. On the Kubernetes guide, guessing pointed the user to a "Configure" button that did not exist, then to the connector menu; the real path was **⋮** → **Configure Chat**.
 - **Nothing unchecked enters the closed world.** Untick *Chats from Gemini* in every source picker, and never use *Search the web for new sources* in the study notebook.
