@@ -107,6 +107,7 @@ Next: <MODE> <topic>
 | Analogies mislead beginners | Mapping table, 2 breaks with the misconception each causes, and the learner finds a third |
 | Switching engines costs attention | Switch only at phase boundaries, with the handover card |
 | The open world invites passive reading | Gemini asks before it tells; `CONTEXT` is the only explaining mode and ends with a question |
+| Gemini chats appear in NotebookLM's sources (*Chats from Gemini*) | Leave them unticked; open-world knowledge reaches NotebookLM only through the docs, after `VERIFY` |
 | AI-generated quizzes and cards drift to definitions | Scenario-only prompts; skip definition cards; flashcards only from `Weak links` |
 
 ## 7. Research basis
@@ -136,18 +137,30 @@ Fill these for the subject before writing modules. The Kubernetes column is the 
 
 ## 9. Engine facts
 
-Verified 2026-11-07. Re-check with WebSearch when older than about 3 months.
+Verified 2026-11-07; UI details checked against the user's screenshots on 2026-11-08. Re-check with WebSearch when older than about 3 months.
 
 **NotebookLM:**
-- **Custom chat:** Chat → **Configure** → **Custom** takes instructions of up to **10,000 characters** (raised from 500 in December 2025). *Learning Guide* is a separate preset.
+- **Custom chat:** the **⋮** menu at the top right (next to **Share**) → **Configure Chat** → goal **Custom** takes instructions of up to **10,000 characters** (the dialog shows a `0 / 10000` counter; seen 2026-11-08). The dialog offers the goals *Default*, *Learning Guide* and *Custom*, and a response length of *Default*, *Longer* or *Shorter*. Keep *Default* length: *Shorter* can cut the summaries and `DEBRIEF` lists. The same menu has *Customize notebook*, *Copy notebook*, *Analytics* and *Delete chat history*. The sliders icon in the chat box is **not** chat configuration: it opens app connectors (Google Drive, Connect an app). UI seen 2026-11-08.
+- **Name:** the app's footer reads "Gemini Notebook"; third-party guides say NotebookLM was renamed in July 2026. The URL and the guides still say NotebookLM.
+- **Gemini chats as sources:** Gemini conversations that use the notebook appear in the Sources panel as a **Chats from Gemini** group, and **Select all** ticks them too (seen 2026-11-08). Closed-world sessions must leave them unticked.
 - **Audio Overview formats:** Deep Dive, Brief, Critique and Debate. Interactive **Join** lets you ask the hosts questions; reportedly it works for Deep Dive only, and in English.
 - **Flashcards and Quiz:** they have a topic box, a difficulty setting, a source picker, and **Explain** with citations. The topic box is a hint, not a hard rule.
 - **Data Table:** a Studio output with a custom prompt; it exports to Google Sheets.
 - **Sources:** an uploaded file is a static copy. A changed file must be removed and re-uploaded; the sync script reports which ones. The free tier allows 50 sources per notebook; Pro allows more.
 
+- **Chat history:** each notebook has one chat thread per person, and it is saved. **⋮** → **Delete chat history** clears all of it; single messages cannot be deleted. **Save to note** sits under each reply, and **Add note** at the bottom of the Studio panel.
+- **Studio dialogs, seen 2026-11-05 and 2026-11-08:**
+  - *Customize Audio Overview*: Format, Choose language, Length (Short / Default / Long), Sources, the box *What should the AI hosts focus on in this episode?*, and suggestion chips that append text to the box.
+  - *Flashcards*: Number of Cards, Level of Difficulty, Include Images, Choose language, Sources, topic box and chips.
+
 **Gemini:**
 - **Notebooks as sources:** a NotebookLM notebook can be attached as a source in the Gemini app (**+** → NotebookLM); Workspace accounts have this since January 2026. Since April 2026, notebooks also live in Gemini and sync both ways.
-- **Gems:** a Gem can have a notebook as **Knowledge** (reported by third-party guides). On Workspace, an admin must enable NotebookLM first.
+- **Gems:**
+  - Gems are created on the web only, through the side panel → **Gems** (or **Explore Gems**) → **New Gem**, which has Name, Instructions, a default tool and Knowledge files. After that, they are usable on mobile too.
+  - Attaching a notebook as Gem **Knowledge** is reported but not confirmed.
+  - The documented way to attach a notebook is per chat: **+** → **NotebookLM**.
+  - On Workspace, an admin must enable NotebookLM first.
+  - None of this has been checked against the user's screen yet.
 - **Canvas** builds interactive diagrams and pages; **Deep Research** writes long, cited reports.
 
 Sources:
@@ -157,6 +170,9 @@ Sources:
 - [Data Tables in NotebookLM (Google blog)](https://blog.google/technology/google-labs/notebooklm-data-tables/)
 - [NotebookLM in Gemini (Workspace Updates, 01/2026)](https://workspaceupdates.googleblog.com/2026/01/take-notebooks-further-notebooklm-gemini.html)
 - [Notebooks in the Gemini app (9to5Google, 04/2026)](https://9to5google.com/2026/04/08/gemini-app-notebooks/)
+- [Use chat in NotebookLM (Google support)](https://support.google.com/notebooklm/answer/16179559?hl=en)
+- [Create a custom Gem in the Gemini app (Chrome Story, 07/2026)](https://chromestory.com/2026/07/create-gem-gemini-app/)
+- [Gemini Gems guide (Zapier)](https://zapier.com/blog/gemini-gems/)
 - [NotebookLM in Gemini Gems for Workspace (DEV Community)](https://dev.to/workalizer/unlocking-notebooklm-in-gemini-gems-for-google-workspace-accounts-3ck4)
 
 ## 10. Anti-patterns seen so far

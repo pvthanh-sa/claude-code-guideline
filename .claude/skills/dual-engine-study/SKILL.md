@@ -72,11 +72,23 @@ Follow the template block. In order:
 4. **Gemini:** `ANALOGY`, `INCIDENT`, `CONTEXT`, `DESIGN` and `INTERVIEW` starters.
 5. **Done when:** 2–3 abilities, never "read X".
 
-**Grounding rule:** for every `PREDICT` failure, `grep` the corpus for its mechanism. If the corpus does not describe it, move it to a Gemini `INCIDENT`.
+**Grounding rule:** for every `PREDICT` failure, `grep` the corpus for its mechanism. If the corpus does not describe it, move it to a Gemini `INCIDENT`. An `INCIDENT` starter gives a symptom only, never the cause.
 
 **Gemini starters name topics; they never assert versions, dates, limits or prices.** Gemini verifies those itself, with sources.
 
-### 5. Fill the two instruction blocks
+### 5. Write the learner's operating manual (Parts 1–3)
+
+The learner is new to NotebookLM and Gemini. Before any module, the guide must let them picture every click and every exchange:
+- **Part 1, one-time setup, click by click.** Copy UI paths only from `framework.md` → *Engine facts*, which are verified from screenshots or dated sources. Say which steps are unverified and ask for a screenshot.
+- **Part 2, the first week for Module 1, day by day.** For each item: which panel, which button, which dialog field, which prompt to paste, and what to copy into which note afterwards.
+- **Part 3, one sample exchange per command** (`TRACE`, `PREDICT`, `DIAGNOSE`, `DEBRIEF`, `HANDOVER`, `REVIEW`, `ANALOGY`, `INCIDENT`, `CONTEXT`, `DESIGN` / `INTERVIEW`, `VERIFY`):
+  - rewritten with the subject's own Module 1 prompts;
+  - 4–8 lines each;
+  - `…` wherever a real answer would spoil a `PREDICT` item.
+
+Theory comes last (Part 6), and the instruction blocks go in the appendices.
+
+### 6. Fill the two instruction blocks
 
 Replace the `{{…}}` placeholders in the template's NotebookLM and Gemini instructions with subject-specific values; the K8s values are given as examples. Keep the rules verbatim.
 
@@ -84,7 +96,7 @@ Check the lengths:
 - NotebookLM Custom: at most 10,000 characters;
 - Gemini Gem: keep it at or under about 5,000.
 
-### 6. Set up the sync
+### 7. Set up the sync
 
 1. Copy `templates/sync-notebooklm.sh` to `<docs>/scripts/sync-notebooklm.sh`.
 2. Fill in:
@@ -94,14 +106,14 @@ Check the lengths:
 3. `chmod +x`, run it, and confirm there is no `NOT LISTED`.
 4. If `<docs>` is a git repo, git-ignore the copy folder.
 
-### 7. Re-verify the engine facts
+### 8. Re-verify the engine facts
 
 NotebookLM and Gemini change every few months.
 - If `framework.md` → *Engine facts* is older than about 3 months, or the user's screenshots disagree with it, `WebSearch` the features the guide relies on.
 - Update `framework.md` and the guide together.
 - Cite the sources to the user.
 
-### 8. Verify the guide
+### 9. Verify the guide
 
 - [ ] Every source name in the guide exists in the sync folder.
 - [ ] Internal anchors resolve, and code fences are balanced.
@@ -109,8 +121,10 @@ NotebookLM and Gemini change every few months.
 - [ ] No definition-style question appears anywhere ("What is", "Define", "List the").
 - [ ] Every `PREDICT` failure is grounded in the corpus.
 - [ ] Each module builds only on earlier ones, and every prompt is paste-ready English inside a code block.
+- [ ] The parts are in order: operations (Parts 1–3), then material (Parts 4–5), then theory (Part 6).
+- [ ] Every command used in the modules has a sample in Part 3, and every UI step is verified or marked unverified.
 
-### 9. Hand over
+### 10. Hand over
 
 Tell the user:
 - what was built;
@@ -125,7 +139,7 @@ Then:
 ## Extending an existing guide
 
 Examples: a new module once a doc section is written, or a new source.
-- Apply steps 4, 5 and 8 to the existing guide, keeping its structure.
+- Apply steps 4, 6 and 9 to the existing guide, keeping its structure. Add a Part 3 sample if the change introduces a new command.
 - Update the sync script's `SOURCES` / `SKIP`, run it, and tell the user which files to re-upload.
 
 ## Hard rules
@@ -141,3 +155,6 @@ These were learned on the Kubernetes guide:
 - **`Upgrades` enter the docs only after `VERIFY` and with the user's consent.** Some doc sections may be user-owned.
 - **The guide is never uploaded to NotebookLM.** It lives in this skill's `examples/`, or in `SKIP` if kept next to the docs.
 - **Write the guide as a spec:** present tense, no session history, kebab-case file names.
+- **Operations before theory.** The first Kubernetes guide explained the method well but not the clicks. The user: *"cách viết hiện tại của m làm t ko hình các thao tác sẽ ra sao. T là người mới dùng notebooklm và gemini mà"*. Every guide now opens with Parts 1–3.
+- **Never guess where a button is.** Describe UI steps only from the user's screenshot or a dated source, and record them in `framework.md` → *Engine facts*. On the Kubernetes guide, guessing pointed the user to a "Configure" button that did not exist, then to the connector menu; the real path was **⋮** → **Configure Chat**.
+- **Closed-world sessions leave Gemini chats unticked.** They appear in NotebookLM's sources as *Chats from Gemini*.
