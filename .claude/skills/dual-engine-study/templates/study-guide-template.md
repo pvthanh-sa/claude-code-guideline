@@ -1,58 +1,39 @@
 <!--
-Template: the learner's study guide (dual-engine-study skill). Workflow, not spec: the first screen is only the
-Learn table, the Review table, Always and Tips. No time allocation, no theory (that lives in framework.md).
-Replace every {{PLACEHOLDER}}; repeat the module block per module (5–8). Each PREDICT failure must be grounded in the
-corpus (grep first); INCIDENT starters give a symptom only. Save as examples/<subject-id>-study-guide.md. Delete this comment.
+Template: the learner's study guide (dual-engine-study skill). Save as examples/<subject-id>-study-guide.md. Delete this comment.
+Rules:
+- Workflow, not spec. No time allocation, no theory (that lives in framework.md).
+- Every module is a self-contained guide: goal, model, why these steps, what to open, Learn steps with the prompts inline, its own Review.
+  The learner never scrolls to another section to know what to do or what to paste.
+- Choose each module's steps from the step menu in framework.md §4 and write "Why these steps" in 2–4 sentences.
+  Never give every module the same steps.
+- The Goal asks only for what the core steps practise; optional steps never carry a goal.
+- Each PREDICT failure is grounded in the corpus (grep first); DIAGNOSE only where the docs describe the failure mechanisms;
+  INCIDENT starters give a symptom only, never the cause.
+- Gemini: one or two core commands per module, chosen for what the docs cannot give (current practice, production scale,
+  an abstract model); the rest go under "Optional".
 -->
 
 # {{SUBJECT}}: Study Guide
 
-**NotebookLM** answers only from your {{N_SOURCES}} docs: use it to learn *your* system exactly. **Gemini** brings in the rest of the world: production incidents, current practice, design. One-time setup, command samples and the instructions to paste are in [{{SUBJECT_ID}}-setup.md]({{SUBJECT_ID}}-setup.md).
+**NotebookLM** answers only from your {{N_SOURCES}} docs: use it to learn *your* system exactly. **Gemini** brings in the rest of the world: production incidents, current practice, design. Setup, command samples and the instructions to paste are in [{{SUBJECT_ID}}-setup.md]({{SUBJECT_ID}}-setup.md).
 
-## Learn a module
-
-Go through the steps in order, in as many sittings as you like. Each module's prompts are under [Modules](#modules), grouped by these steps.
-
-| # | Step | Where | What you do | Why it works |
-| --- | --- | --- | --- | --- |
-| 1 | **Guess** | Paper | Sketch how you think the module's system works, for 2 minutes. Wrong is fine | Guessing first makes your brain search for the answer |
-| 2 | **Listen** | NotebookLM → Audio Overview | Generate the module's audio (Deep Dive, Short) and listen with its **Diagrams** open | Hearing and seeing together beats either alone |
-| 3 | **Rebuild** | Paper | Close everything and redraw from memory. Then open the diagrams and mark the differences in red | Recalling, then checking at once, is what sticks |
-| 4 | **Explain** | NotebookLM chat | Send the module's `TRACE` prompt and answer one question at a time | Explaining each step builds the causal chain |
-| 5 | **Break** | NotebookLM chat | Send three `PREDICT` failures, then the `DIAGNOSE` line. Finish with `DEBRIEF` | Predicting, then checking, exposes wrong models |
-| 6 | **Connect** | Gemini (your Gem, notebook attached) | Paste the handover card that `DEBRIEF` printed, then send the module's `INCIDENT`, `CONTEXT` and `DESIGN` prompts. Finish with `DEBRIEF` | Comparing your lab with the real world makes it transferable |
-| 7 | **Save** | NotebookLM notes | From each `DEBRIEF`, copy the mistakes into `Weak links`, and the open questions and checked facts into `For Gemini & docs` | Your mistakes become the questions of your next review |
-
-## Review
-
-Review each module **the day after** you learn it (sleep in between helps memory set), **about a week later**, and **about a month later**. Review by testing yourself, never by rereading or re-listening: rereading feels productive but builds little memory.
-
-| Step | Where | What you do |
-| --- | --- | --- |
-| **Redraw** | Paper | On a blank page, redraw the module's model. Open the diagrams and mark what you missed; each miss becomes a `Weak links` line |
-| **Quiz** | NotebookLM → Quiz | Difficulty Hard, the module's files, the Quiz prompt. Click **Explain** on every wrong answer |
-| **Weak links** | NotebookLM → Flashcards | Cards from all `Weak links` lines. Then: right → add a ✓; wrong → remove its ✓s; three ✓ (right in three different reviews) → delete the line |
-| **Mix** (from two modules on) | NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic | One mixed drill per review, alternating between the two |
-
-At the one-month review, also ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script and re-upload the files it reports as `CHANGED`.
+**How to use it.** Take the modules in order. Open the one you are on and follow it from top to bottom: each step says where to go and what to do, and gives the prompt to paste. Each module has only the steps it needs; *Why these steps* says why. When you finish a module, do its *Review* the day after, about a week later and about a month later; start the next module whenever you like.
 
 ## Always
 
 - Before a NotebookLM chat or Studio item, tick only the module's files, in Studio dialogs too, and never **Chats from Gemini**.
 - Never use *Search the web for new sources* in this notebook, and never **Convert to source** a note.
 - When an answer or a grade surprises you, click its citation number and read the passage.
-- It should feel hard. Struggling to recall is what builds memory; when it feels easy and smooth, you are probably only re-reading.
+- Review by testing yourself, never by rereading or re-listening. It should feel hard: struggling to recall is what builds memory.
+- At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script and re-upload the files it reports as `CHANGED`.
 
 ## Tips (optional)
 
 - Start an answer with `sure:` or `guess:`. A wrong `sure:` answer is flagged *Confident error*: put it first in `Weak links`, marked `!`.
 - Stuck: send `hint` for a smaller question, `reveal` for the answer.
-- A hard step: ask in Vietnamese; the explanation comes in Vietnamese with the terms in English.
-- Model still abstract after step 3: send the module's `ANALOGY` prompt in Gemini.
-- Interview practice: send the module's `INTERVIEW` prompt in Gemini.
+- A hard step: ask in {{LEARNER_LANGUAGE}}; the explanation comes in that language with the terms in English.
 - Before a quiz, note the score you expect; a big gap to the real score means you feel surer than you are.
 - New module: **⋮** → **Delete chat history** for a clean chat, once the last `DEBRIEF` is saved.
-- {{A module without a reference diagram}}: at step 3, photograph your drawing and send `REVIEW` in Gemini instead of comparing.
 
 Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck, Audio Brief / Critique / Debate, Canvas, Guided Learning. Why: the skill's `framework.md`, §7.
 
@@ -60,54 +41,73 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
 
 **Where the reference diagrams are:** {{a short-name → file table for the docs that hold diagrams}}
 
-<!-- Repeat this block per module (5–8). Each PREDICT failure must be grounded in the corpus: grep for its mechanism first. INCIDENT starters give a symptom only, never the cause. -->
+<!-- Repeat per module (5–8). Keep only the steps this module needs; renumber. -->
 
 ### Module {{N}}: {{MODULE_NAME}}
 
+**Goal:** {{2–3 abilities the core steps practise, e.g. "you can draw X from memory, with what each component reads and writes; you can say what still works when Y is down"}}.
+
 **Model:** {{2–4 sentences: the components and the causal flow}}
 
-- **Tick:** `{{flat-source-1.md}}` ({{sections}}), `{{flat-source-2.md}}`
-- **Diagrams:** {{diagrams in the docs that show this module's flow (short name + section); if none: "none in the docs yet", use Gemini REVIEW at step 3, and add the missing diagram to For Gemini & docs}}
+**Why these steps:** {{2–4 sentences: what kind of thing this module is (a chain, a path, a comparison, a set of feedback loops, an abstract mapping), which steps that calls for, which usual steps are left out and why, and what Gemini adds that the docs cannot}}
 
-**Step 2 · Listen** (Audio Overview, focus box):
+**Before you start:**
+- In NotebookLM, tick only {{the module's flat source names}}.
+- Open these diagrams from your docs in VS Code's Markdown preview (Ctrl+Shift+V): {{short name + section, …}}. {{If none: "Your docs have no diagram for this module yet. Ask Claude Code to add one; until then, step 3 uses Gemini's `REVIEW`."}}
+
+#### Learn
+
+1. **Sketch** (paper, 2 minutes): {{what to sketch from prior knowledge}}. Wrong is fine.
+2. **Listen** (NotebookLM → Studio → Audio Overview: Deep Dive, English, Short): paste this into *What should the AI hosts focus on*, then play it with the diagrams open:
+   ```
+   {{Follow one concrete event through the system: which component acts at each step, what it reads and writes. Then one change or failure.}}
+   ```
+3. **Redraw** (paper): close everything and redraw {{what}}. Then open {{the reference diagram}} and mark the differences in red.
+   {{Without a reference diagram, use instead: **Draw and review** (paper, then Gemini): from memory, draw {{what}}. Photograph the drawing, start a Gem chat with the notebook attached, send the photo with `REVIEW`, and fix the drawing through its questions.}}
+4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+   ```
+   TRACE: {{a concrete starting event from the labs}}. {{what to make me name at each hop}}.
+   ```
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+   - {{failure 1, grounded in the corpus}}
+   - {{failure 2}}
+   - {{failure 3}}
+   - {{failure 4}}
+   - {{failure 5}}
+6. {{Only where the docs describe the failure mechanisms:}} **Diagnose** (NotebookLM chat): send `DIAGNOSE {{module topic}}` and investigate from the first symptom.
+7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
+8. **{{Gemini step name}}** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+   ```
+   {{CONTEXT / INCIDENT / ANALOGY: the module's first core Gemini prompt}}
+   ```
+9. **{{Gemini step name}}** (Gemini, same chat): send:
+   ```
+   {{the second core Gemini prompt, if the module needs one}}
+   ```
+10. **Save** (Gemini): send `DEBRIEF`. Copy its mistakes into `Weak links`. For each fact it suggests, open the link, find the quoted sentence, and only then copy the fact into `For Gemini & docs`.
+
+**Optional, in the same Gemini chat** ({{the other commands}}):
 ```
-{{Follow one concrete event through the system: which component acts at each step, what it reads and writes. Then one change or failure.}}
+{{DESIGN / INTERVIEW / INCIDENT / ANALOGY prompts this module can use but does not need}}
 ```
 
-**Step 4 · Explain** (NotebookLM chat):
-```
-TRACE: {{a concrete starting event from the labs}}. {{what to make me name at each hop}}.
-```
+#### Review: the day after, about a week later, about a month later
 
-**Step 5 · Break** (NotebookLM chat): send `PREDICT:` with three of these, one per message, then `DIAGNOSE {{module topic}}`.
-- {{failure 1, grounded in the corpus}}
-- {{failure 2}}
-- {{failure 3}}
-- {{failure 4}}
-- {{failure 5}}
-
-**Step 6 · Connect** (Gemini), one after another:
-```
-INCIDENT: {{a production-scale symptom only, never the cause}}.
-```
-```
-CONTEXT: {{topics where current practice differs from the docs; name topics, do not assert versions}}.
-```
-```
-DESIGN: {{a realistic brief with numbers}}.
-```
-Optional:
-```
-ANALOGY: {{the module's core mechanism}}.
-```
-```
-INTERVIEW: {{2–3 trade-offs from this module}}.
-```
-
-**Done when** (your redraw at each review shows it):
-- {{an ability, e.g. "you can draw X from memory, with what each component reads and writes"}};
-- {{an ability about failures}};
-- {{an ability about current practice}}.
+1. **Redraw** (paper): on a blank page, redraw {{what}}. Compare with {{the reference diagram, or the corrected REVIEW drawing}}; each miss becomes a `Weak links` line.
+2. **Quiz** (NotebookLM → Studio → Quiz: Hard, English, this module's files): paste this into the topic box, then click **Explain** on every wrong answer:
+   ```
+   Module: {{module name and sections}}.
+   Every question must be a scenario in a running system: a symptom or a change, and the answer is the cause, the next diagnostic step, or the predicted effect. Wrong options must be plausible misdiagnoses, not obviously wrong answers.
+   Never ask what something is, what it stands for, its default value, or which command or flag does something. Never ask me to recall IPs, names or ports.
+   ```
+3. **Weak links** (NotebookLM → Studio → Flashcards: Standard, Hard, Text Only, English): paste this with all your `Weak links` lines. Then: right → add a ✓; wrong → remove its ✓s; three ✓ → delete the line.
+   ```
+   Make cards only from these weak links:
+   <paste all lines from the Weak links note>
+   Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
+   Never make a definition card ("What is X?", "X is ...").
+   ```
+4. {{From the second module on:}} **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
 
 ### Not covered yet
 

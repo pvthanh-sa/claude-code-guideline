@@ -54,28 +54,52 @@ Banned in both engines:
 
 Each subject also has a **cross-cutting distinction** that most failure questions reduce to (§9).
 
-## 4. The learner's workflow: Learn, then Review
+## 4. The learner's workflow: tailored modules, then Review
 
-The study guide's first screen holds only two tables, *Learn a module* and *Review*, plus a few rules and tips. It says **what to do with which tool**, and **when to review**. It does not allocate the learner's time: they decide when and how long they study.
+Each module in the study guide is a **self-contained guide**, read from top to bottom:
+1. **Goal:** only what the core steps practise.
+2. **Model.**
+3. **Why these steps.**
+4. **Before you start:** the files to tick and the diagrams to open.
+5. **Learn:** steps with their prompts inline.
+6. **Review.**
 
-**Learn a module.** In order, in as many sittings as the learner likes:
+The learner never scrolls elsewhere to know what to do or what to paste. The guide does not allocate the learner's time.
 
-| # | Step | Where | What the learner does | Principle |
-| --- | --- | --- | --- | --- |
-| 1 | Guess | Paper | Sketches the system from what they already know, 2 minutes | Pretesting / generation |
-| 2 | Listen | NotebookLM Audio Overview (Deep Dive, Short) | Listens with the docs' diagrams open | Dual coding / modality; worked example |
-| 3 | Rebuild | Paper | Redraws from memory, compares with the diagrams, marks differences in red | Retrieval with immediate feedback |
-| 4 | Explain | NotebookLM chat | `TRACE` | Self-explanation |
-| 5 | Break | NotebookLM chat | `PREDICT` ×3, then `DIAGNOSE`, then `DEBRIEF` | Predict, observe, explain |
-| 6 | Connect | Gemini | Handover card, then `INCIDENT`, `CONTEXT`, `DESIGN`, then `DEBRIEF` | Comparing cases builds transfer |
-| 7 | Save | Notes | Mistakes → `Weak links`; open questions and checked facts → `For Gemini & docs` | Errors become retrieval cues |
+**Steps are chosen per module, not stamped onto every module.** Pick from this menu by asking what kind of thing the module is (a chain, a path, a comparison of designs, a set of feedback loops, an abstract mapping) and what the docs can support:
 
-**Review.** The day after (sleep consolidates memory), about a week later, and about a month later. Review by retrieval only, never by rereading or re-listening:
+| Step | Where | Use it when | Principle |
+| --- | --- | --- | --- |
+| Sketch (2 min) | Paper | Always | Pretesting / generation |
+| Listen (Deep Dive, Short) | NotebookLM Audio Overview | Always; with the docs' diagrams open if they exist | Dual coding; worked example |
+| Redraw + compare | Paper | The docs have a verified diagram of the module's flow | Retrieval with immediate feedback |
+| Draw + `REVIEW` | Paper, then Gemini | No verified diagram exists (and add one to the docs as a gap) | Feedback on the learner's own model |
+| `TRACE` | NotebookLM | The module has a flow or sequence to follow (almost always) | Self-explanation |
+| `PREDICT` (3 of 5) | NotebookLM | Always | Predict, observe, explain |
+| `DIAGNOSE` | NotebookLM | Only where the docs describe the failure mechanisms well enough (grep) | Problem solving |
+| `ANALOGY` | Gemini | The model is abstract, or the docs contain an analogy worth stress-testing | Analogical encoding |
+| `CONTEXT` | Gemini | Current practice or the learner's work platform differs from the lab | Transfer; currency |
+| `INCIDENT` | Gemini | Production-scale failures differ from what the lab can show | Transfer under realistic conditions |
+| `DESIGN` | Gemini | The module's skill is a design trade-off the learner will face | Transfer to new designs |
+| `INTERVIEW` | Gemini | Interview goal; otherwise optional | Retrieval under pressure |
+| Save (`DEBRIEF`) | Both | At the end of each engine's part | Errors become retrieval cues |
+
+**Rules for choosing:**
+- **Gemini:** one or two core commands per module, chosen for what the docs cannot give; the others go under *Optional*.
+- **Why these steps:** write 2–4 sentences saying why this set, including the usual steps left out and why.
+- **Goal:** ask only for abilities that the core steps practise.
+
+**Kubernetes example:**
+- **Module 1, the control loop:** no `DIAGNOSE`, because the docs barely cover control-plane troubleshooting. Instead, `ANALOGY` stress-tests the learner's own "K8s Company" analogy, and `CONTEXT` maps the lab to managed EKS.
+- **Module 2, service networking:** `DIAGNOSE` is used, because selectors, endpoints and readiness are well documented. Then `CONTEXT` (VPC CNI) and `INCIDENT`.
+- **Module 6, identity:** there is no diagram, so draw + `REVIEW`, plus `ANALOGY` for an abstract model.
+
+**Review**, inside each module: the day after (sleep consolidates memory), about a week later, about a month later. Review by retrieval only, never by rereading or re-listening:
 
 | Step | Where | What | Principle |
 | --- | --- | --- | --- |
-| Redraw | Paper | Blank-page redraw, then compare; each miss becomes a `Weak links` line | Delayed retrieval; delayed judgement is accurate |
-| Quiz | NotebookLM Quiz (Hard) | Scenario quiz on the module; **Explain** on every wrong answer | Testing effect with feedback |
+| Redraw | Paper | Blank-page redraw, then compare with the diagram (or the corrected `REVIEW` drawing); each miss becomes a `Weak links` line | Delayed retrieval; delayed judgement is accurate |
+| Quiz | NotebookLM Quiz (Hard) | A scenario quiz with the module's scope filled in; **Explain** on every wrong answer | Testing effect with feedback |
 | Weak links | NotebookLM Flashcards | Cards from all lines. Right → add ✓; wrong → clear its ✓s; three ✓ (right in three different reviews) → delete the line | Successive relearning |
 | Mix | NotebookLM `CHAOS` or Gemini `INCIDENT` without a topic | From the second module on, one mixed drill per review | Interleaving |
 
@@ -86,9 +110,7 @@ At the one-month review, the checked facts in `For Gemini & docs` are folded int
 - writing down the expected quiz score;
 - `hint` / `reveal`;
 - asking in the learner's language;
-- `ANALOGY` and `INTERVIEW`;
-- Delete chat history at a new module;
-- `REVIEW` for modules without a diagram.
+- Delete chat history at a new module.
 
 **Why this shape:** practice testing and distributed practice are the highest-utility learning techniques; rereading, highlighting and summarising are the lowest (Dunlosky et al., 2013). Every step retrieves, explains or predicts; none only re-exposes the learner to the material.
 
@@ -266,7 +288,10 @@ Sources:
 - **Prompts asserting version facts** ("X is GA since …") go stale and get repeated as truth. Name topics; let Gemini verify.
 - **A model "verifying" its own claim.** Only the quoted sentence on the official page, seen by the learner, counts.
 - **`Weak links` without a review rule** pile up and are never retested; review them all at every review, with ✓ marks.
-- **A guide written as a method spec instead of a learner workflow.** At 830 lines, with sessions, minutes and theory, the learner felt overwhelmed: *"tôi chỉ quan tâm tôi cần dùng tool làm gì để học thôi"*. The study guide now opens with the Learn and Review tables only; setup and samples live in a separate file; theory lives here.
+- **A guide written as a method spec instead of a learner workflow.** At 830 lines, with sessions, minutes and theory, the learner felt overwhelmed: *"tôi chỉ quan tâm tôi cần dùng tool làm gì để học thôi"*. Each module is now a self-contained guide with only the steps it needs; setup and samples live in a separate file; theory lives here.
+- **The same steps stamped onto every module** (always all seven), which is mechanical. Choose the steps per module from the §4 menu, and say why.
+- **A global step table with the prompts elsewhere.** The learner scrolls up and down between them. Each module is a self-contained guide with its prompts inline.
+- **Prompts parked in an appendix or another file.** The learner has to jump away in the middle of a step. Put every prompt at the step that uses it.
 - **Allocating the learner's time unasked** (sessions, minutes, weekly plans). Say what to do and when to review; the learner plans their own time.
 - **Guessing where a button is.** UI steps come only from the user's screenshots or dated sources.
 - **Uploading the study guide itself as a source** makes the AI quiz about the method. Keep it out of the notebook.
