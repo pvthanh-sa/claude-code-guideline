@@ -5,6 +5,7 @@
 # Usage:  sync-notebooklm.sh <subject>          reads examples/<subject>-sync.conf in this skill
 #         sync-notebooklm.sh path/to/file.conf  any config file
 #         sync-notebooklm.sh                    lists the subjects that have a config
+#         sync-notebooklm.sh <subject> --uploaded   after you have done the uploads it listed: clears the to-do list
 #         NOTEBOOKLM_DIR=/other/dir sync-notebooklm.sh <subject>   overrides dest for one run
 #
 # Config format: one setting per line; lines starting with # are comments.
@@ -13,9 +14,10 @@
 #   source = rel/path.md | flat-name.md     one line per uploaded file; path relative to docs
 #   skip   = rel/prefix                     .md files under docs that are deliberately not uploaded
 #
-# Each run rebuilds dest from the source lines and reports what changed since the last run:
+# Each run rebuilds dest from the source lines and adds what changed to a to-do list kept in dest/.pending-upload:
 #   NEW / CHANGED  -> upload (again) in NotebookLM; for CHANGED, remove the old source there first
 #   REMOVED        -> remove that source in NotebookLM
+# The list is shown on every run, whoever ran the script before, until it is cleared with --uploaded.
 # Any .md under docs that is neither a source nor skipped is reported as NOT LISTED,
 # so a new doc is never left out silently: add a source or skip line for it.
 set -euo pipefail
@@ -28,6 +30,9 @@ if (( $# == 0 )); then
   for c in "$SKILL"/examples/*-sync.conf; do [[ -e "$c" ]] && echo "  $(basename "$c" -sync.conf)"; done
   exit 1
 fi
+UPLOADED=0
+if [[ "${2:-}" == "--uploaded" ]]; then UPLOADED=1
+elif (( $# > 1 )); then echo "ERROR: unknown option '$2' (only --uploaded)" >&2; exit 1; fi
 CONF="$1"
 [[ -f "$CONF" ]] || CONF="$SKILL/examples/$1-sync.conf"
 [[ -f "$CONF" ]] || { echo "ERROR: no config for '$1' (looked for $CONF)" >&2; exit 1; }
@@ -100,13 +105,41 @@ while IFS= read -r -d '' f; do
   unlisted+=("$rel")
 done < <(find "$DOCS" -name '*.md' -not -path '*/.git/*' -not -path "$DEST/*" -print0 | sort -z)
 
+# --- to-do list for NotebookLM: survives between runs ------------------------------------------
+PENDING="$DEST/.pending-upload"
+declare -A todo=()
+if [[ -f "$PENDING" ]]; then
+  while read -r st name; do [[ -n "${name:-}" ]] && todo["$name"]="$st"; done < "$PENDING"
+fi
+for x in "${new[@]}";     do todo["$x"]="NEW"; done
+for x in "${changed[@]}"; do [[ "${todo[$x]:-}" == "NEW" ]] || todo["$x"]="CHANGED"; done   # NEW still means "upload"
+for x in "${removed[@]}"; do todo["$x"]="REMOVED"; done
+for x in "${!todo[@]}"; do   # a pending upload whose file is no longer listed needs nothing any more
+  [[ "${todo[$x]}" != "REMOVED" && -z "${by_name[$x]:-}" ]] && unset 'todo[$x]'
+done
+if (( UPLOADED )); then todo=(); fi
+: > "$PENDING"
+for x in "${!todo[@]}"; do echo "${todo[$x]} $x" >> "$PENDING"; done
+sort -o "$PENDING" "$PENDING"
+
 # --- report ---------------------------------------------------------------------------------
 echo "NotebookLM folder: $DEST (${#SOURCES[@]} files)"
-for x in "${new[@]}";     do echo "  NEW      $x"; done
-for x in "${changed[@]}"; do echo "  CHANGED  $x"; done
-for x in "${removed[@]}"; do echo "  REMOVED  $x"; done
 if (( ${#new[@]} + ${#changed[@]} + ${#removed[@]} == 0 )); then
-  echo "  nothing changed since the last run"
+  echo "  no change in the docs since the last run"
+fi
+if (( UPLOADED )); then
+  echo "Marked as uploaded: the to-do list is empty."
+elif [[ -s "$PENDING" ]]; then
+  echo "To do in NotebookLM (then run again with --uploaded):"
+  while read -r st name; do
+    case "$st" in
+      NEW)     echo "  NEW      $name   -> upload it" ;;
+      CHANGED) echo "  CHANGED  $name   -> remove the old source, then upload this copy" ;;
+      REMOVED) echo "  REMOVED  $name   -> remove this source" ;;
+    esac
+  done < "$PENDING"
+else
+  echo "NotebookLM is up to date."
 fi
 if (( ${#unlisted[@]} )); then
   echo "WARNING: not a source or skip line in $CONF:"

@@ -24,8 +24,9 @@ Rules:
 - Before a NotebookLM chat or Studio item, tick only the module's files, in Studio dialogs too, and never **Chats from Gemini**.
 - Never use *Search the web for new sources* in this notebook, and never **Convert to source** a note.
 - When an answer or a grade surprises you, click its citation number and read the passage.
+- Don't click the suggested questions NotebookLM shows under a reply: they make it explain the answer instead of asking you.
 - Review by testing yourself, never by rereading or re-listening. It should feel hard: struggling to recall is what builds memory.
-- At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script and re-upload the files it reports as `CHANGED`.
+- At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script, do what its to-do list says, and clear the list with `--uploaded`.
 
 ## Tips (optional)
 
@@ -64,11 +65,11 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    ```
 3. **Redraw** (paper): close everything and redraw {{what}}. Then open {{the reference diagram}} and mark the differences in red.
    {{Without a reference diagram, use instead: **Draw and review** (paper, then Gemini): from memory, draw {{what}}. Photograph the drawing, start a Gem chat with the notebook attached, send the photo with `REVIEW`, and fix the drawing through its questions.}}
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: {{a concrete starting event from the labs}}. {{what to make me name at each hop}}.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - {{failure 1, grounded in the corpus}}
    - {{failure 2}}
    - {{failure 3}}

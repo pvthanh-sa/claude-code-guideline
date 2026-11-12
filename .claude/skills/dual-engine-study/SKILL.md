@@ -123,6 +123,7 @@ The skill ships **one** script, `scripts/sync-notebooklm.sh`, for every subject;
    - one `source = path | flat-name` line per uploaded file, with flat names that carry their origin (`lab-2-…`, `lab-3-step-05-…`);
    - `skip` lines for app source code and anything else that is not study material (also the guide, if the user keeps it next to the docs).
 2. Run `scripts/sync-notebooklm.sh <subject>` and confirm there is no `NOT LISTED`.
+   The script keeps a to-do list (`<dest>/.pending-upload`) that survives between runs. So when you run it after editing the docs, the user still sees what to upload on their next run, until they clear it with `--uploaded`. Tell the user the files on the list.
 3. If `<docs>` is a git repo, git-ignore the copy folder there.
 4. The guide calls the script as `~/.claude/skills/dual-engine-study/scripts/sync-notebooklm.sh <subject>`, and the setup file says what it does and who keeps the list up to date.
 
@@ -146,6 +147,7 @@ NotebookLM and Gemini change every few months.
 - [ ] Every command used in the modules has a sample in the setup file's Commands, and every UI step is verified or marked unverified.
 - [ ] Every module has a **Reference diagrams** line, and every section it names exists in the docs.
 - [ ] No tool rated Skip or Never in `framework.md` §7 appears in either file, except in the "not used on purpose" line.
+- [ ] Every chat step says how it ends (for example "done when it sums up the chain"), and *Always* warns against NotebookLM's suggested-question chips, which make it explain instead of ask.
 - [ ] Every prompt sits at the step that uses it: nothing says "see Appendix" or sends the learner to another file or section to fetch a prompt.
 
 ### 10. Hand over

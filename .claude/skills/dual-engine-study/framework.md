@@ -293,6 +293,7 @@ Sources:
 - **A global step table with the prompts elsewhere.** The learner scrolls up and down between them. Each module is a self-contained guide with its prompts inline.
 - **Prompts parked in an appendix or another file.** The learner has to jump away in the middle of a step. Put every prompt at the step that uses it.
 - **Allocating the learner's time unasked** (sessions, minutes, weekly plans). Say what to do and when to review; the learner plans their own time.
+- **Chat steps with no stated end, and clickable suggested questions.** A learner in `TRACE` did not know whether to keep answering or move on to `PREDICT`. Say how each chat step ends. NotebookLM's suggested-question chips under a reply turn retrieval into explanation, so tell the learner to ignore them.
 - **Guessing where a button is.** UI steps come only from the user's screenshots or dated sources.
 - **Uploading the study guide itself as a source** makes the AI quiz about the method. Keep it out of the notebook.
 - **Asking the learner to recall IPs, ports or names from labs** is trivia. Scenarios may *show* them, but questions never ask for them.

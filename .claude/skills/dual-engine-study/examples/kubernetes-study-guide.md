@@ -9,8 +9,9 @@
 - Before a NotebookLM chat or Studio item, tick only the module's files, in Studio dialogs too, and never **Chats from Gemini**.
 - Never use *Search the web for new sources* in this notebook, and never **Convert to source** a note.
 - When an answer or a grade surprises you, click its citation number and read the passage.
+- Don't click the suggested questions NotebookLM shows under a reply: they make it explain the answer instead of asking you.
 - Review by testing yourself, never by rereading or re-listening. It should feel hard: struggling to recall is what builds memory.
-- At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script and re-upload the files it reports as `CHANGED`.
+- At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script, do what its to-do list says, and clear the list with `--uploaded`.
 
 ## Tips (optional)
 
@@ -36,7 +37,7 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
 
 ### Module 1: The control loop
 
-**Goal:** you can draw kubectl → API server → etcd → controllers / scheduler → kubelet → container runtime from memory, with what each one reads and writes; you can say what still works when each control-plane component is down; you can say what a managed control plane changes about that.
+**Goal:** you can draw kubectl → API server → etcd → controllers / scheduler → kubelet → container runtime from memory, with what each one reads and writes; you can say who acts when a Pod is deleted and when the image changes; you can say what still works when each control-plane component is down; you can say what a managed control plane changes about that.
 
 **Model:** You never start containers yourself. You write desired state to the API server, which stores it in etcd. Controllers and the scheduler watch that state and act to close the gap. On each node, the kubelet makes the decision real.
 
@@ -44,7 +45,7 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
 
 **Before you start:**
 - In NotebookLM, tick only `kubernetes-theory.md` (II–IV), `lab-3-overview.md`.
-- Open these diagrams from your docs in VS Code's Markdown preview (Ctrl+Shift+V): Theory II *The big picture* (the cluster-architecture image and the "K8s Company" image); Theory III *Behind the scenes: `kubectl create deployment --image ...`*; Lab 3 Overview *What runs on each node*.
+- Open these diagrams from your docs in VS Code's Markdown preview (Ctrl+Shift+V): Theory II *The big picture* (the cluster-architecture image and the "K8s Company" image); Theory IV *How a Deployment works: create, delete, update* (its Create, Delete and Update diagrams); Lab 3 Overview *What runs on each node*.
 
 #### Learn
 
@@ -53,12 +54,12 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    ```
    Follow one kubectl apply of a Deployment with 3 replicas from the API server to running containers. At each step say which component acts, what it reads and what it writes, and why only the API server talks to etcd. Then follow what happens when one of those Pods is deleted.
    ```
-3. **Redraw** (paper): close everything and redraw the chain kubectl → API server → etcd → controllers and scheduler → kubelet → container runtime, with what each one reads and writes. Then open Theory II *The big picture* and mark the differences in red.
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+3. **Redraw** (paper): close everything and redraw the chain kubectl → API server → etcd → controllers and scheduler → kubelet → container runtime, with what each one reads and writes. Then open the Create diagram in Theory IV *How a Deployment works* and mark the differences in red.
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: I run kubectl apply for a Deployment with 3 replicas (Theory sections II–IV). Then I delete one of its Pods. Then I change the image tag.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - The kube-scheduler is stopped for 10 minutes while I scale a Deployment from 3 to 6 replicas.
    - The kube-controller-manager is stopped and a Pod of a Deployment is deleted.
    - The API server is unreachable for 10 minutes: what keeps serving user traffic, and what can no longer change?
@@ -85,7 +86,7 @@ INTERVIEW: the declarative model and controllers versus imperative scripts; why 
 
 #### Review: the day after, about a week later, about a month later
 
-1. **Redraw** (paper): on a blank page, redraw the chain kubectl → API server → etcd → controllers and scheduler → kubelet → container runtime, with what each one reads and writes. Compare with Theory II *The big picture*; each miss becomes a `Weak links` line.
+1. **Redraw** (paper): on a blank page, redraw the chain kubectl → API server → etcd → controllers and scheduler → kubelet → container runtime, with what each one reads and writes. Compare with the Create diagram in Theory IV *How a Deployment works*; each miss becomes a `Weak links` line.
 2. **Quiz** (NotebookLM → Studio → Quiz: Hard, English, this module's files): paste this into the topic box, then click **Explain** on every wrong answer:
    ```
    Module: The control loop (Theory sections II–IV; Lab 3 Overview).
@@ -120,11 +121,11 @@ INTERVIEW: the declarative model and controllers versus imperative scripts; why 
    Explain how one Pod reaches another through a Service: the DNS lookup through CoreDNS, the ClusterIP, the rules kube-proxy writes on the sending node, the endpoints list, and how readiness probes add Pods to it and remove them. Use the on-prem lab's frontend → backend → MySQL calls as the running example, including where DNAT and SNAT happen and why.
    ```
 3. **Redraw** (paper): close everything and redraw the Pod → Service → Pod path, marking the node where each address changes. Then open Lab 3 Overview *How a request travels* and mark the differences in red.
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: On the on-prem cluster (lab-3-overview), the frontend Pod's nginx forwards /api/products to http://ecommerce-backend:8080, and the backend then queries MySQL. Make me name every address change and the node where it happens.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - kube-proxy stops on one node.
    - Every CoreDNS Pod is down.
    - A Service's selector has a typo in one label.
@@ -192,11 +193,11 @@ In both, the component that **configures** the path is not a hop **on** the path
    Compare how a user request enters the cluster in the three labs: Lab 1 (ALB managed by the AWS Load Balancer Controller, sending to Pod IPs), Lab 2 (a hand-made ALB in front of ingress-nginx on a NodePort) and Lab 3 (an external nginx in front of ingress-nginx on a NodePort). For each, name every hop and who configures it.
    ```
 3. **Redraw** (paper): close everything and redraw the three edges side by side, marking who configures each hop and where each one loses the client IP. Then open Theory V *Why on-prem uses NodePort but cloud uses LoadBalancer* and mark the differences in red.
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: One user request to the app, first on EKS (Lab 1), then on-prem (Lab 3), from the browser to a backend Pod. For each hop make me name who forwards it, the source and destination after the hop, and who configured that hop.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - The AWS Load Balancer Controller Pod crashes: does traffic through the existing ALB stop?
    - The ingress-nginx controller Pod is deleted on the on-prem cluster.
    - An Ingress is created without a matching ingress class.
@@ -263,11 +264,11 @@ INTERVIEW: why on-prem uses NodePort while cloud uses LoadBalancer; why a Cluste
    Follow the database's data through its life: the PVC created from the StatefulSet's template, how a PV is bound, where the bytes physically live (NFS on-prem, EBS or EFS on AWS), and what happens to them when the Pod is rescheduled, when the StatefulSet is deleted, and when the PVC is deleted.
    ```
 3. **Redraw** (paper): close everything and redraw the chain StatefulSet → PVC → PV → StorageClass and CSI driver → disk, with who creates each object. Then open Theory VI *Persistent Volume Claims (PVC)* and mark the differences in red.
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: I apply the MySQL StatefulSet with a volumeClaimTemplate on the on-prem cluster (lab-3-step-08). Continue until the first row is written to disk on the NFS server. Then the Pod is deleted and comes back.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - The PVC stays Pending.
    - The node that runs a Pod with an EBS volume dies and the only free node is in another Availability Zone.
    - Someone deletes a PVC whose StorageClass has `reclaimPolicy: Delete`.
@@ -334,11 +335,11 @@ INTERVIEW: a database in a StatefulSet versus a managed database; EBS versus EFS
    Explain the chain from rising traffic to new nodes and back: CPU usage measured against requests, the HPA's calculation, new Pods, readiness gating traffic, Pods that cannot be scheduled, Karpenter launching a node, and consolidation removing it later. Point out where each misconfiguration in the sources breaks the chain.
    ```
 3. **Redraw** (paper): close everything and redraw the loops: probes; metrics-server → HPA → replicas; unschedulable Pods → Karpenter → nodes; and where resource requests sit in each. Then open Theory X *How it works* and the Karpenter doc's diagram and mark the differences in red.
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: Traffic to the backend triples on EKS. Continue until a new node serves traffic, then until traffic drops and the extra capacity is removed.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - The liveness probe checks the database, and the database becomes slow.
    - A Deployment has no CPU requests, and an HPA targets 70% CPU.
    - metrics-server is down.
@@ -404,11 +405,11 @@ INTERVIEW: liveness versus readiness when a dependency fails; Cluster Autoscaler
    Explain how the AWS Load Balancer Controller Pod gets permission to create an ALB: the service account, the OIDC provider, the IAM role's trust policy and the token exchange. Then explain how a new IAM user gets kubectl access to the cluster, and why AWS permissions alone are not enough.
    ```
 3. **Draw and review** (paper, then Gemini): from memory, draw both identity paths, naming the component that checks each step. Photograph the drawing, start a Gem chat with the notebook attached, send the photo with `REVIEW`, and fix the drawing through its questions. Keep the corrected drawing for your reviews.
-4. **Trace** (NotebookLM chat): send this and answer one question at a time:
+4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
    TRACE: The AWS Load Balancer Controller Pod starts and must call the AWS API to create an ALB for a new Ingress. Then a new IAM user runs kubectl get pods for the first time.
    ```
-5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these per message. Pick the three you are least sure of:
+5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
    - The IAM role's trust policy names the wrong service account.
    - The cluster's OIDC provider was never associated with IAM.
    - A new IAM user has AdministratorAccess in AWS but no access entry.

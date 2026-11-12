@@ -68,14 +68,20 @@ NotebookLM's footer now reads *Gemini Notebook*; it is the same app at notebookl
 
 **What the sync script does.** NotebookLM cannot read your folders, so the script copies the {{N_SOURCES}} files listed in `{{SUBJECT_ID}}-sync.conf` (next to this guide, in the skill) into one flat folder. It renames each file so its name says where it comes from, for example `lab-2-…`. It never changes your docs. A `.md` file in the docs folder that is not in the list is reported as `NOT LISTED`, so a new doc is never forgotten. When you add, rename or delete a doc, ask Claude Code to update `{{SUBJECT_ID}}-sync.conf`; it also does this by itself when it writes a doc.
 
-**When the docs change**, run the script again and do what it reports:
+**When the docs change**, run the script again. It keeps a to-do list of what NotebookLM still needs and shows it on every run, whoever ran it before, until you clear it:
 
 | Script says | In NotebookLM |
 | --- | --- |
 | `NEW` | Upload the file |
 | `CHANGED` | Remove the old source (the **⋮** next to it in the Sources panel → **Remove source**), then upload the new copy |
 | `REMOVED` | Remove the source |
-| `nothing changed since the last run` | Nothing |
+| `NotebookLM is up to date.` | Nothing |
+
+Once you have done what the list says, clear it:
+
+```bash
+~/.claude/skills/dual-engine-study/scripts/sync-notebooklm.sh {{SUBJECT_ID}} --uploaded
+```
 
 ## Gemini setup
 
