@@ -3,7 +3,7 @@
 Runbook for granting Claude's AWS MCP servers **read-only, metadata-only** access to an AWS
 account. Three authentication methods are documented, ranked **most-secure first**, **all set up with
 the AWS CLI** (no Terraform — this is bootstrap-the-credential work). The IAM **policy is identical**
-across all three — only *how credentials are delivered* changes, which is what determines the blast
+across all three — only _how credentials are delivered_ changes, which is what determines the blast
 radius if a credential leaks.
 
 **Scope:** the AI agent inspects infrastructure metadata only. No data reads (no SQL, no S3 object
@@ -16,11 +16,11 @@ spec-stage cost estimate.
 
 ## Choose a method
 
-| # | Method | Credential on disk | Expires? | Needs new IAM user? | Needs Identity Center? | Extra cost | Pick when |
-|---|--------|--------------------|----------|---------------------|------------------------|------------|-----------|
-| **1** | **IAM Identity Center (SSO) permission set** ✅ *recommended* | none (SSO token, hours) | yes | no | **yes** | none¹ | Org has Identity Center enabled |
-| **2** | **IAM role, assumed from an MFA session** | none for MCP (temp role creds, 1h) | yes | no | no | none | New IAM users blocked (SCP) **and** no Identity Center |
-| **3** | **IAM user + long-lived access key** ⚠️ *last resort* | static secret, **never expires** | no | yes | no | none | Neither of the above is possible (legacy CI, tool without SSO support) |
+| #     | Method                                                        | Credential on disk                 | Expires? | Needs new IAM user? | Needs Identity Center? | Extra cost | Pick when                                                              |
+| ----- | ------------------------------------------------------------- | ---------------------------------- | -------- | ------------------- | ---------------------- | ---------- | ---------------------------------------------------------------------- |
+| **1** | **IAM Identity Center (SSO) permission set** ✅ _recommended_ | none (SSO token, hours)            | yes      | no                  | **yes**                | none¹      | Org has Identity Center enabled                                        |
+| **2** | **IAM role, assumed from an MFA session**                     | none for MCP (temp role creds, 1h) | yes      | no                  | no                     | none       | New IAM users blocked (SCP) **and** no Identity Center                 |
+| **3** | **IAM user + long-lived access key** ⚠️ _last resort_         | static secret, **never expires**   | no       | yes                 | no                     | none       | Neither of the above is possible (legacy CI, tool without SSO support) |
 
 ¹ Identity Center itself is free. You only pay if the identity source is a chargeable service (AWS
 Managed Microsoft AD). The built-in directory and external IdPs (Okta / Entra ID / Google) add no
@@ -361,8 +361,8 @@ Save as `iam/claude-mcp-boundary.json`. This one document is reused as:
 }
 ```
 
-> **Note on `sts:AssumeRole` in the Deny block:** this denies the *holder* of this policy from
-> assuming **further** roles (prevents role-chaining) — it does **not** block assuming *into* a role
+> **Note on `sts:AssumeRole` in the Deny block:** this denies the _holder_ of this policy from
+> assuming **further** roles (prevents role-chaining) — it does **not** block assuming _into_ a role
 > that carries this policy (Method 2). That is governed by the role's trust policy plus the source
 > identity's own permissions, which live elsewhere. Keep the Deny as-is for all three methods.
 
@@ -432,6 +432,7 @@ aws sso-admin create-account-assignment --region $REGION --profile $ADMIN \
 ```
 
 > **If you edit the policy later**, push the change to already-assigned accounts:
+>
 > ```bash
 > aws sso-admin put-inline-policy-to-permission-set ...   # update the policy
 > aws sso-admin provision-permission-set --region $REGION --profile $ADMIN \
@@ -466,7 +467,10 @@ Point the AWS MCP server's env at this profile in `.mcp.json`:
   "mcpServers": {
     "aws": {
       "command": "<your aws mcp server command>",
-      "env": { "AWS_PROFILE": "welfan-lg-mcp-pham-thanh", "AWS_REGION": "ap-southeast-1" }
+      "env": {
+        "AWS_PROFILE": "welfan-lg-mcp-pham-thanh",
+        "AWS_REGION": "ap-southeast-1"
+      }
     }
   }
 }
@@ -614,7 +618,7 @@ Save the key to `~/.aws/credentials` (`chmod 600`), reference the profile in `.m
 - **Rotate every ≤90 days.** Create a new key, swap the profile, delete the old key.
 - **Never commit** the key — ensure `.aws/`, `*.credentials`, `.env*` are gitignored; run the repo's
   secret-scan gate (G6) before any push.
-- **Detect disuse:** enable IAM Access Analyzer *unused access* findings to flag stale keys.
+- **Detect disuse:** enable IAM Access Analyzer _unused access_ findings to flag stale keys.
 
 ### 3.3 Revoke / teardown
 
