@@ -538,7 +538,7 @@ aws iam put-role-policy --profile $ADMIN \
 ```ini
 [profile welfan-lg-mcp-pham-thanh]
 role_arn         = arn:aws:iam::346523298829:role/claude-mcp-readonly
-source_profile   = welfan-lg-mfa
+source_profile   = welfan-lg-mfa-tf
 region           = ap-southeast-1   # must be in the policy's allowed-regions list
 duration_seconds = 3600
 output           = json
@@ -550,11 +550,11 @@ An MCP server runs **non-interactively** — it cannot answer an MFA prompt. So:
 
 - **Do NOT put `mfa_serial` on the assume-role profile** — that makes the SDK prompt for an OTP on
   every refresh → the MCP hangs.
-- Instead, `welfan-lg-mfa` must already hold **MFA-derived session credentials**. Mint them once per
+- Instead, `welfan-lg-mfa-tf` must already hold **MFA-derived session credentials**. Mint them once per
   ~12h; the MCP assumes the role headlessly the whole window:
 
 ```bash
-# Run once per ~12h. Store the returned keys under [welfan-lg-mfa] in ~/.aws/credentials.
+# Run once per ~12h. Store the returned keys under [welfan-lg-mfa-tf] in ~/.aws/credentials.
 aws sts get-session-token \
   --serial-number arn:aws:iam::346523298829:mfa/<your-iam-user> \
   --token-code <6-digit-otp> \
