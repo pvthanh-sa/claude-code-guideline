@@ -10,6 +10,7 @@
 - Never use *Search the web for new sources* in this notebook, and never **Convert to source** a note.
 - When an answer or a grade surprises you, click its citation number and read the passage.
 - Don't click the suggested questions NotebookLM shows under a reply: they make it explain the answer instead of asking you.
+- Stay inside the module you are on. The `SCOPE:` line at the top of its Trace prompt keeps NotebookLM there, and the handover card keeps Gemini there. A mechanism marked "a later topic" belongs to its own module: leave it until then.
 - Review by testing yourself, never by rereading or re-listening. It should feel hard: struggling to recall is what builds memory.
 - At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script, do what its to-do list says, and clear the list with `--uploaded`.
 
@@ -57,6 +58,7 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
 3. **Redraw** (paper): close everything and redraw the chain kubectl → API server → etcd → controllers and scheduler → kubelet → container runtime, with what each one reads and writes. Then open the Create diagram in Theory IV *How a Deployment works* and mark the differences in red.
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module 1, The control loop (Theory sections II–IV; Lab 3 Overview).
    TRACE: I run kubectl apply for a Deployment with 3 replicas (Theory sections II–IV). Then I delete one of its Pods. Then I change the image tag.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -65,8 +67,8 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    - The API server is unreachable for 10 minutes: what keeps serving user traffic, and what can no longer change?
    - A worker node is switched off while it runs one replica of a Deployment and one Pod of a DaemonSet.
    - A new node joins the cluster.
-6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-7. **Analogy** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+7. **Analogy** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    ANALOGY: the Kubernetes control loop. Then stress-test the "K8s Company" analogy in my docs (Theory section II): where does it break?
    ```
@@ -123,6 +125,7 @@ INTERVIEW: the declarative model and controllers versus imperative scripts; why 
 3. **Redraw** (paper): close everything and redraw the Pod → Service → Pod path, marking the node where each address changes. Then open Lab 3 Overview *How a request travels* and mark the differences in red.
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module 2, Service networking (Theory section V parts 1–4 and IX; Lab 3 Overview; the Lab 1 network doc).
    TRACE: On the on-prem cluster (lab-3-overview), the frontend Pod's nginx forwards /api/products to http://ecommerce-backend:8080, and the backend then queries MySQL. Make me name every address change and the node where it happens.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -132,8 +135,8 @@ INTERVIEW: the declarative model and controllers versus imperative scripts; why 
    - The readiness probe starts failing on one of the two backend Pods.
    - A request enters a NodePort on a node that does not run the target Pod (`externalTrafficPolicy: Cluster`): what source IP does the Pod see, and why?
 6. **Diagnose** (NotebookLM chat): send `DIAGNOSE Service networking` and investigate from the first symptom.
-7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-8. **Current practice** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+8. **Current practice** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    CONTEXT: kube-proxy modes (iptables, IPVS, nftables) and eBPF-based replacements such as Cilium; and how the Amazon VPC CNI gives Pods VPC IP addresses, compared with Calico IPIP in my on-prem lab.
    ```
@@ -167,7 +170,7 @@ INTERVIEW: service discovery through DNS versus environment variables; ClusterIP
    Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
    Never make a definition card ("What is X?", "X is ...").
    ```
-4. **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
+4. **Mix**: one drill across the modules learned so far: NotebookLM `CHAOS: Modules 1–2` with those modules' files ticked, or Gemini `INCIDENT: any of Modules 1–2`. Alternate between them.
 
 ### Module 3: The edge, getting traffic into the cluster
 
@@ -195,6 +198,7 @@ In both, the component that **configures** the path is not a hop **on** the path
 3. **Redraw** (paper): close everything and redraw the three edges side by side, marking who configures each hop and where each one loses the client IP. Then open Theory V *Why on-prem uses NodePort but cloud uses LoadBalancer* and mark the differences in red.
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module 3, The edge (Theory section V part 5; Labs 1, 2 and 3).
    TRACE: One user request to the app, first on EKS (Lab 1), then on-prem (Lab 3), from the browser to a backend Pod. For each hop make me name who forwards it, the source and destination after the hop, and who configured that hop.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -203,8 +207,8 @@ In both, the component that **configures** the path is not a hop **on** the path
    - An Ingress is created without a matching ingress class.
    - The on-prem nginx-lb still lists a node that has been switched off.
    - On EKS, a backend Pod fails its readiness probe while it is an ALB target.
-6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-7. **Incident** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+7. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    INCIDENT: users get 502 errors from the ALB for about 30 seconds during every deployment on EKS.
    ```
@@ -238,7 +242,7 @@ INTERVIEW: why on-prem uses NodePort while cloud uses LoadBalancer; why a Cluste
    Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
    Never make a definition card ("What is X?", "X is ...").
    ```
-4. **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
+4. **Mix**: one drill across the modules learned so far: NotebookLM `CHAOS: Modules 1–3` with those modules' files ticked, or Gemini `INCIDENT: any of Modules 1–3`. Alternate between them.
 
 ### Module 4: State, where the data lives
 
@@ -266,6 +270,7 @@ INTERVIEW: why on-prem uses NodePort while cloud uses LoadBalancer; why a Cluste
 3. **Redraw** (paper): close everything and redraw the chain StatefulSet → PVC → PV → StorageClass and CSI driver → disk, with who creates each object. Then open Theory VI *Persistent Volume Claims (PVC)* and mark the differences in red.
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module 4, State (Theory sections VI–VII; Lab 3 step 08; the Lab 1 network doc; the misconfigurations doc).
    TRACE: I apply the MySQL StatefulSet with a volumeClaimTemplate on the on-prem cluster (lab-3-step-08). Continue until the first row is written to disk on the NFS server. Then the Pod is deleted and comes back.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -274,8 +279,8 @@ INTERVIEW: why on-prem uses NodePort while cloud uses LoadBalancer; why a Cluste
    - Someone deletes a PVC whose StorageClass has `reclaimPolicy: Delete`.
    - The NFS server reboots while MySQL is writing.
    - The MySQL StatefulSet is scaled from 1 to 3 replicas, expecting a replicated database.
-6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-7. **Incident** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+7. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    INCIDENT: after a node failure on EKS, the replacement database Pod has been stuck in ContainerCreating for 10 minutes.
    ```
@@ -309,7 +314,7 @@ INTERVIEW: a database in a StatefulSet versus a managed database; EBS versus EFS
    Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
    Never make a definition card ("What is X?", "X is ...").
    ```
-4. **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
+4. **Mix**: one drill across the modules learned so far: NotebookLM `CHAOS: Modules 1–4` with those modules' files ticked, or Gemini `INCIDENT: any of Modules 1–4`. Alternate between them.
 
 ### Module 5: Health and scaling feedback loops
 
@@ -337,6 +342,7 @@ INTERVIEW: a database in a StatefulSet versus a managed database; EBS versus EFS
 3. **Redraw** (paper): close everything and redraw the loops: probes; metrics-server → HPA → replicas; unschedulable Pods → Karpenter → nodes; and where resource requests sit in each. Then open Theory X *How it works* and the Karpenter doc's diagram and mark the differences in red.
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module 5, Health and scaling (Theory sections VIII–X; the Karpenter doc; the misconfigurations doc; Lab 3 step 07).
    TRACE: Traffic to the backend triples on EKS. Continue until a new node serves traffic, then until traffic drops and the extra capacity is removed.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -346,8 +352,8 @@ INTERVIEW: a database in a StatefulSet versus a managed database; EBS versus EFS
    - New Pods spike their CPU while starting up.
    - A Pod requests more memory than any node offers after the kubelet's reservations.
 6. **Diagnose** (NotebookLM chat): send `DIAGNOSE health and scaling` and investigate from the first symptom.
-7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-8. **Incident** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+8. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    INCIDENT: during a flash sale the HPA scales the backend out, but the error rate stays high for 5 minutes before the system recovers.
    ```
@@ -381,7 +387,7 @@ INTERVIEW: liveness versus readiness when a dependency fails; Cluster Autoscaler
    Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
    Never make a definition card ("What is X?", "X is ...").
    ```
-4. **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
+4. **Mix**: one drill across the modules learned so far: NotebookLM `CHAOS: Modules 1–5` with those modules' files ticked, or Gemini `INCIDENT: any of Modules 1–5`. Alternate between them.
 
 ### Module 6: Identity and access on EKS
 
@@ -404,9 +410,10 @@ INTERVIEW: liveness versus readiness when a dependency fails; Cluster Autoscaler
    ```
    Explain how the AWS Load Balancer Controller Pod gets permission to create an ALB: the service account, the OIDC provider, the IAM role's trust policy and the token exchange. Then explain how a new IAM user gets kubectl access to the cluster, and why AWS permissions alone are not enough.
    ```
-3. **Draw and review** (paper, then Gemini): from memory, draw both identity paths, naming the component that checks each step. Photograph the drawing, start a Gem chat with the notebook attached, send the photo with `REVIEW`, and fix the drawing through its questions. Keep the corrected drawing for your reviews.
+3. **Draw and review** (paper, then Gemini): from memory, draw both identity paths, naming the component that checks each step. Photograph the drawing, start a new chat in your Gem, send the photo with `REVIEW`, and fix the drawing through its questions. Keep the corrected drawing for your reviews.
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module 6, Identity and access on EKS (Lab 1; the Karpenter doc; the misconfigurations doc).
    TRACE: The AWS Load Balancer Controller Pod starts and must call the AWS API to create an ALB for a new Ingress. Then a new IAM user runs kubectl get pods for the first time.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -415,8 +422,8 @@ INTERVIEW: liveness versus readiness when a dependency fails; Cluster Autoscaler
    - A new IAM user has AdministratorAccess in AWS but no access entry.
    - Pods get AWS permissions from the node's instance role instead of IRSA.
    - An app's database password is stored only as a base64 Kubernetes Secret in Git.
-6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-7. **Analogy** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+7. **Analogy** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    ANALOGY: IAM, access entries, Kubernetes RBAC and IRSA as one identity system.
    ```
@@ -453,7 +460,7 @@ INTERVIEW: IRSA versus the node instance role; External Secrets with AWS Secrets
    Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
    Never make a definition card ("What is X?", "X is ...").
    ```
-4. **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
+4. **Mix**: one drill across the modules learned so far: NotebookLM `CHAOS: Modules 1–6` with those modules' files ticked, or Gemini `INCIDENT: any of Modules 1–6`. Alternate between them.
 
 ### Not covered yet
 

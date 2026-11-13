@@ -25,6 +25,7 @@ Rules:
 - Never use *Search the web for new sources* in this notebook, and never **Convert to source** a note.
 - When an answer or a grade surprises you, click its citation number and read the passage.
 - Don't click the suggested questions NotebookLM shows under a reply: they make it explain the answer instead of asking you.
+- Stay inside the module you are on. The `SCOPE:` line at the top of its Trace prompt keeps NotebookLM there, and the handover card keeps Gemini there. A mechanism marked "a later topic" belongs to its own module: leave it until then.
 - Review by testing yourself, never by rereading or re-listening. It should feel hard: struggling to recall is what builds memory.
 - At each one-month review, ask Claude Code to fold the checked facts from `For Gemini & docs` into the docs, then run the sync script, do what its to-do list says, and clear the list with `--uploaded`.
 
@@ -64,9 +65,10 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    {{Follow one concrete event through the system: which component acts at each step, what it reads and writes. Then one change or failure.}}
    ```
 3. **Redraw** (paper): close everything and redraw {{what}}. Then open {{the reference diagram}} and mark the differences in red.
-   {{Without a reference diagram, use instead: **Draw and review** (paper, then Gemini): from memory, draw {{what}}. Photograph the drawing, start a Gem chat with the notebook attached, send the photo with `REVIEW`, and fix the drawing through its questions.}}
+   {{Without a reference diagram, use instead: **Draw and review** (paper, then Gemini): from memory, draw {{what}}. Photograph the drawing, start a new chat in your Gem, send the photo with `REVIEW`, and fix the drawing through its questions.}}
 4. **Trace** (NotebookLM chat): send this, then answer each question it asks in your own words, one reply per question. The step is done when it sums up the whole chain as numbered steps and lists the links you missed:
    ```
+   SCOPE: Module {{N}}, {{module name and sections}}.
    TRACE: {{a concrete starting event from the labs}}. {{what to make me name at each hop}}.
    ```
 5. **Predict** (NotebookLM chat): send `PREDICT:` followed by one of these, answer the four questions it asks, read its scoring, then send the next one. Do the three you are least sure of:
@@ -76,8 +78,8 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    - {{failure 4}}
    - {{failure 5}}
 6. {{Only where the docs describe the failure mechanisms:}} **Diagnose** (NotebookLM chat): send `DIAGNOSE {{module topic}}` and investigate from the first symptom.
-7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints.
-8. **{{Gemini step name}}** (Gemini: a new Gem chat with the notebook attached): paste the handover card with your own *Model in one sentence*, then send:
+7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
+8. **{{Gemini step name}}** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    {{CONTEXT / INCIDENT / ANALOGY: the module's first core Gemini prompt}}
    ```
@@ -108,7 +110,7 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    Front: a situation or "what happens if ...". Back: the causal chain in 2–4 steps (A → B → C), naming the component at each step.
    Never make a definition card ("What is X?", "X is ...").
    ```
-4. {{From the second module on:}} **Mix**: one drill across all modules so far: NotebookLM `CHAOS` with all files ticked, or Gemini `INCIDENT` with no topic. Alternate between them.
+4. {{From the second module on:}} **Mix**: one drill across the modules learned so far: NotebookLM `CHAOS: Modules 1–{{N}}` with those modules' files ticked, or Gemini `INCIDENT: any of Modules 1–{{N}}`. Alternate between them.
 
 ### Not covered yet
 

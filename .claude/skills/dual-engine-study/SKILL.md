@@ -103,7 +103,8 @@ Workflow, not spec. The learner should see **what to do with which tool**, not a
 Replace the `{{…}}` placeholders in the template's NotebookLM and Gemini instructions with subject-specific values; the K8s values are given as examples. Keep the rules verbatim, including:
 - `sure:` / `guess:` and *Confident errors*;
 - the Vietnamese-help rule (or the learner's own language);
-- the three-list `DEBRIEF` with its printed handover card;
+- the scope rule (`SCOPE:` line; other topics as one-line black boxes and a *Later* list; mixed drills only over learned modules);
+- the four-list `DEBRIEF` with NotebookLM's printed handover card (no *Next* line);
 - `VERIFY` quoting the deciding sentence;
 - the `[Current practice, …]` label on `Upgrades`.
 
@@ -148,6 +149,7 @@ NotebookLM and Gemini change every few months.
 - [ ] Every module has a **Reference diagrams** line, and every section it names exists in the docs.
 - [ ] No tool rated Skip or Never in `framework.md` §7 appears in either file, except in the "not used on purpose" line.
 - [ ] Every chat step says how it ends (for example "done when it sums up the chain"), and *Always* warns against NotebookLM's suggested-question chips, which make it explain instead of ask.
+- [ ] Every module's Trace prompt starts with a `SCOPE:` line, and every Mix step names the modules learned so far.
 - [ ] Every prompt sits at the step that uses it: nothing says "see Appendix" or sends the learner to another file or section to fetch a prompt.
 
 ### 10. Hand over
@@ -192,6 +194,7 @@ These were learned on the Kubernetes guide:
   - Module prompts go inside their step.
 
   The user, on "Paste Appendix A into the text box": *"Tôi muốn thêm prompt ngay chỗ này luôn"*.
+- **Stay in the module's scope.** Expanding is good only inside the topic: into production, current practice and analogies of *this* module, never into another module's topic. Every module's Trace prompt starts with `SCOPE: Module <n>, <name and sections>`, the handover card carries it to Gemini, and mixed drills name the modules learned so far. The user: *"Biết là mở rộng tốt nhưng đừng để mở rộng sang phần khác"*.
 - **Tailor every module.** The user, on the uniform seven steps: *"Đâu phải lúc nào 1 module cũng áp dụng hết đâu, v thì hơi máy móc quá. Bạn cần phải suy ngẫm module cần dùng gì"*; and on the separate step table: *"hơi khó khăn trong quá trình lướt lên xuống… tôi muốn viết như guide trong 1 module"*. Choose the steps per module (§4 menu), say why, and keep each module self-contained.
 - **Workflow, not spec.** For each stage, say what to do with which tool; leave the method's theory in `framework.md`, and never plan the learner's time. The user, on the 830-line guide: *"tôi bị ngộp vì quá nhiều… tôi chỉ quan tâm tôi cần dùng tool làm gì để học thôi"*; and *"đâu cần thiết bạn tính thời gian cho tôi"*.
 - **Operations before theory.** The first Kubernetes guide explained the method well but not the clicks. The user: *"cách viết hiện tại của m làm t ko hình các thao tác sẽ ra sao. T là người mới dùng notebooklm và gemini mà"*. The setup file walks through every click, and the setup file's Commands show every exchange.

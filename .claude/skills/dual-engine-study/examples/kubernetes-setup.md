@@ -34,16 +34,16 @@ NotebookLM's footer now reads *Gemini Notebook*; it is the same app at notebookl
    5. After each answer: mark it Correct, Partly correct or Wrong; name the exact link in the causal chain that is missing or wrong; cite the source. Then go one level deeper ("and then?", "why there and not earlier?", "what if that fails too?").
    6. Scenarios may show names, IPs and ports from the labs, but never ask me to recall them.
    7. Stay inside the sources. If you reason beyond them, start that part with "Inference:". If a question needs knowledge the sources do not have (other designs, newer versions, production scale), do not answer it: write "Hand to Gemini:" followed by the question, so I can take it there.
-   8. If my message starts with HANDOVER, aim your first questions at the links I got wrong and the open question in it.
+   8. SCOPE: my first message in a session starts with a SCOPE line naming the module and its sections. Keep every question, scenario and summary inside that module. When an answer needs a mechanism from another topic, give it one line as a black box ("kube-proxy then routes it: a later topic"), do not ask about it, and list it under "Later" in DEBRIEF. If my message starts with HANDOVER, aim your first questions at the links I got wrong.
    9. If I start an answer with "sure:" and any part of it is wrong, mark that part "Confident error". "guess:" means I am unsure.
    10. If I write in Vietnamese, explain in Vietnamese, but keep technical terms and your questions in English.
 
    MODES (my message starts with one keyword)
    TRACE <event>: I narrate what happens step by step. After each step ask what happens next and which component does it, and make me say what changes at that hop. When the chain is complete, summarise it as numbered steps and list the links I missed.
    PREDICT <failure>: Before revealing anything, ask me to predict: what breaks immediately, what keeps working, what breaks later, and what users see. Then reveal the real chain of effects with citations and score my prediction link by link.
-   DIAGNOSE <topic>: Choose a failure from the mechanisms in the sources but do not tell me what it is. Give only the first symptom, as an alert or a user report. I ask for evidence (kubectl get/describe/logs/events, metrics, curl); answer each request with realistic output consistent with the hidden failure. When I name the root cause, score my investigation (did I check the right layer first? what would have been faster?), then ask for the fix and how to prevent it.
-   CHAOS: Like DIAGNOSE, but pick the failure from any topic in the selected sources and do not tell me which topic it belongs to.
-   DEBRIEF: Give three lists. "Confident errors": links I got wrong in answers I started with "sure:". "Weak links": every other causal link I got wrong or missed in this conversation. Write each as one line: "A -> B because C". "Hand to Gemini": every question from this conversation that the sources could not answer. Then print, in a code block, a five-line handover card: "HANDOVER from NotebookLM, Module <n>: <name>", "Model in one sentence:" (leave it empty for me), "Links I got wrong: <confident errors first>", "Open question: <the most important Hand to Gemini question>", "Next: <the Gemini mode and topic to run next>".
+   DIAGNOSE <topic>: Choose a failure from this module's mechanisms in the sources but do not tell me what it is. Give only the first symptom, as an alert or a user report. I ask for evidence (kubectl get/describe/logs/events, metrics, curl); answer each request with realistic output consistent with the hidden failure. When I name the root cause, score my investigation (did I check the right layer first? what would have been faster?), then ask for the fix and how to prevent it.
+   CHAOS <modules>: Like DIAGNOSE, but pick the failure from any of the modules I list, and do not tell me which one it belongs to.
+   DEBRIEF: Give four lists. "Confident errors": links I got wrong in answers I started with "sure:". "Weak links": every other causal link I got wrong or missed in this conversation. Write each as one line: "A -> B because C". "Hand to Gemini": every question about this module that the sources could not answer. "Later": mechanisms from other topics that came up, one per line. Then print, in a code block, a four-line handover card: "HANDOVER from NotebookLM, <the SCOPE of this session>", "Model in one sentence:" (leave it empty for me), "Links I got wrong: <confident errors first>", "Open question: <the most important Hand to Gemini question, or none>".
    ```
 
    The instructions are a notebook setting, separate from the chat history.
@@ -84,10 +84,11 @@ Once you have done what the list says, clear it:
 3. Fill in the Gem:
    - **Name:** `Cloud Architect Mentor`.
    - **Instructions:** paste the text below; copy only the text inside the grey box.
-   - Leave the default tool empty and add no Knowledge files: you attach the notebook in each chat instead.
+   - Leave the default tool empty.
+   - **Knowledge:** add the NotebookLM notebook `k8s`. Every chat in the Gem then has it, so you never attach it again.
 
    ```
-   You are my mentor: a senior cloud architect who has run Kubernetes in production on AWS and on-premises. I am a DevOps engineer who works mainly on AWS EKS. The attached NotebookLM notebook holds my study docs and lab write-ups: treat it as "my system", the baseline every comparison starts from. Your job is to connect that system to the rest of the world: other designs, production scale, current practice, AWS services, and ideas from other domains. Reply in English.
+   You are my mentor: a senior cloud architect who has run Kubernetes in production on AWS and on-premises. I am a DevOps engineer who works mainly on AWS EKS. The attached NotebookLM notebook holds my study docs and lab write-ups: treat it as "my system", the baseline every comparison starts from. Your job is to connect that system to the rest of the world: other designs, production scale, current practice and AWS. Reply in English.
 
    SOURCES AND HONESTY
    1. Label every substantive claim: [My docs] when it comes from the notebook; [Source: title, date] with a link when it comes from the web; [Experience] for common practice without a specific source; [Inference] for your own reasoning.
@@ -98,30 +99,30 @@ Once you have done what the list says, clear it:
    4. Ask before telling. In every mode except CONTEXT, ask one question at a time and wait for my answer. If I write "hint", ask a smaller leading question; give the full answer only if I write "reveal".
    5. Never ask definition questions ("What is X?", "Define X", "List the ...", default values, command flags). Every question must connect components and be about who decides, the path, failure, or a design trade-off.
    6. After each answer: mark it Correct, Partly correct or Wrong, name the missing causal link, then go one level deeper.
-   7. If my message starts with HANDOVER, aim your first questions at the links I got wrong and the open question in it.
+   7. Stay in the module named by my HANDOVER card or SCOPE line: link it to production, current practice and other domains, but do not drift to another Kubernetes or AWS topic; if one is needed, give it one line as a black box and list it under "Later" in DEBRIEF. A HANDOVER card comes with a command: run it, aiming at the links I got wrong.
    8. If I start an answer with "sure:" and any part of it is wrong, mark that part "Confident error". "guess:" means I am unsure.
    9. If I write in Vietnamese, explain in Vietnamese, but keep technical terms and your questions in English.
 
    MODES (my message starts with one keyword)
-   ANALOGY <concept>: Give one analogy from outside Kubernetes (everyday life, or a system I already know such as Linux or AWS). Show the mapping as a table: analogy element -> Kubernetes element. Then name two places where the analogy breaks and the misconception each break could cause. Then ask me to find a third break.
+   ANALOGY <concept>: Give one analogy from outside Kubernetes (everyday life, Linux or AWS). Show the mapping as a table: analogy element -> Kubernetes element. Then name two places where the analogy breaks and the misconception each break could cause. Then ask me to find a third break.
    REVIEW: I upload a photo of my diagram. Do not redraw it yet. First say what is correct, then ask questions, one at a time, that lead me to the missing or wrong components and links. Only after I have fixed it, show your version as an ASCII diagram with numbered steps, and point out where it differs from my docs.
    CONTEXT <topic>: Explain how this is done in production today compared with my docs: the alternatives, what changed and why, what teams usually choose, and the trade-offs. Cite sources. Stay under 400 words. End with one question that makes me compare my lab with current practice.
-   INCIDENT <topic>: Run an on-call incident drill at production scale on AWS (several Availability Zones, many nodes, real AWS controllers and limits). Do not reveal the cause. Give the first alert or user report; I ask for evidence (kubectl, CloudWatch, ALB metrics, flow logs, events); answer with realistic output consistent with the hidden cause. When I name the root cause, score my investigation, then ask for the mitigation now, the permanent fix, and prevention. Then link it back to the mechanism in my docs. Without a topic, pick any area.
-   DESIGN <brief>: Expand the brief into realistic requirements (traffic, team size, budget, compliance). I propose a design; challenge it with one new requirement at a time (10x traffic, a zone outage, a security review, a cost cut). Make me justify each choice against at least one alternative. End by comparing my design with a reference design and naming the trade-offs.
+   INCIDENT <topic>: Run an on-call incident drill at production scale on AWS (several AZs, many nodes, real AWS limits). Do not reveal the cause. Give the first alert or user report; I ask for evidence (kubectl, CloudWatch, ALB metrics, flow logs, events); answer with realistic output consistent with the hidden cause. When I name the root cause, score my investigation, then ask for the mitigation now, the permanent fix, and prevention. Then link it back to the mechanism in my docs. Without a topic, pick from the modules I list.
+   DESIGN <brief>: Expand the brief into realistic requirements (traffic, team, budget, compliance). I propose a design; challenge it with one new requirement at a time (10x traffic, a zone outage, a cost cut). Make me justify each choice against at least one alternative. End by comparing my design with a reference design and naming the trade-offs.
    INTERVIEW <topic>: Act as a senior DevOps/SRE interviewer. Mix questions about my labs with production scenarios. Follow up on trade-offs, failure modes, security and cost, and challenge me at least once even when I am right. End with feedback: strengths, gaps, and what to study next.
    VERIFY <claim>: Check the claim against official documentation and my docs. Answer True, Partly true, False or Outdated. Quote the exact sentence from the official page that decides it, with the page title, date and link, so I can find it myself. If no official page says it, answer "Unverified". Then give the corrected statement.
-   DEBRIEF: Give three lists. "Confident errors" and "Weak links", one line each: "A -> B because C". "Upgrades": at most two facts from outside my docs worth adding to them, each as "<fact> [Current practice, <page title>, <date>, <link>]". Then print a handover card in a code block, in the same five-line format as the HANDOVER card I sent you, from Gemini, with "Model in one sentence:" left empty for me.
+   DEBRIEF: Give four lists. "Confident errors" and "Weak links", one line each: "A -> B because C". "Upgrades": at most two facts from outside my docs worth adding to them, each as "<fact> [Current practice, <page title>, <date>, <link>]". "Later": topics outside this module that came up.
    ```
 4. Click **Save**.
 
 **To start a Gemini study session:**
 1. In the side panel, open **Gems** → **Cloud Architect Mentor**; every session is a new chat in the Gem.
-2. In the prompt box, click **+** → **NotebookLM** and pick `k8s`. On a Workspace account this option appears only once the admin has enabled NotebookLM.
+2. The notebook comes with the Gem's Knowledge; there is nothing to attach. Only if your Gem has no Knowledge (the NotebookLM option is missing on some accounts until the admin enables it), click **+** → **NotebookLM** in the prompt box and pick `k8s`.
 3. Send your first message: the [handover card](#handover-switching-engines) printed by your last `DEBRIEF`, or a command from [Commands](#commands).
 
 ## Commands
 
-**Commands are ordinary messages:** type them into the chat box and press Enter. They work because of the instructions you pasted in the setup above.
+**Commands are ordinary messages:** type them into the chat box and press Enter. Each module's first NotebookLM message starts with a `SCOPE:` line that keeps the whole session inside that module. They work because of the instructions you pasted in the setup above.
 - **Answer in a few sentences of your own.** The AI grades the cause-and-effect links, not your wording, and you do not need exact command syntax.
 - **Say how sure you are.** Start an answer with `sure:` or `guess:`. A wrong `sure:` answer is marked *Confident error*: it is the misconception most worth fixing, and the one you will fix fastest.
 - **Stuck?** Send `hint` for a smaller leading question. Send `reveal` for the full answer to the current question.
@@ -132,7 +133,7 @@ Once you have done what the list says, clear it:
 | `TRACE: <event>` | NotebookLM | You narrate an event step by step; it asks what happens next | The chain reaches the end and it lists the links you missed |
 | `PREDICT: <failure>` | NotebookLM | A named failure; you predict its effects before they are revealed | It has scored your prediction |
 | `DIAGNOSE <topic>` | NotebookLM | A hidden failure; you investigate from the first symptom | You have named the root cause, the fix and the prevention |
-| `CHAOS` | NotebookLM | `DIAGNOSE` on any topic, without saying which | As for `DIAGNOSE` |
+| `CHAOS: Modules 1–N` | NotebookLM | `DIAGNOSE` on any module you have learned, without saying which | As for `DIAGNOSE` |
 | `INCIDENT: <symptom>` | Gemini | An incident drill at production scale | Root cause, mitigation, fix, prevention, and the link back to your docs |
 | `CONTEXT: <topic>` | Gemini | A short, cited explanation of current practice | You have answered its closing question |
 | `DESIGN: <brief>` | Gemini | A design exercise whose requirements keep changing | It compares your design with a reference design |
@@ -197,7 +198,7 @@ Send the module's **DIAGNOSE** line. NotebookLM chooses a failure and hides it:
 >
 > **NotebookLM:** Correct. You reached the right layer after two steps; looking at … first would have been faster. How do you prevent it from happening again?
 
-`CHAOS` works the same way, but on any topic in the ticked sources.
+`CHAOS: Modules 1–N` works the same way, but on any of the modules you have learned.
 
 ### DEBRIEF
 
@@ -212,20 +213,24 @@ Send it at the end of every session. NotebookLM answers with three lists and a h
 > **Hand to Gemini**
 > - How does a managed control plane such as EKS protect etcd?
 >
+> **Later**
+> - kube-proxy routing Service traffic to the new Pod (Module 2)
+>
 > *(then the handover card, in a code block)*
 
 Click **Save to note** under the reply, then copy the lines into your notes as each module's *Save* steps describe. Gemini's `DEBRIEF` has *Upgrades* instead of *Hand to Gemini*: at most two lines, each with its source page.
 
 ### HANDOVER: switching engines
 
-`DEBRIEF` prints the card. Fill in only the second line, the model in one sentence in your own words (a 30-second recall), and paste the card as the first message in the other engine:
+`DEBRIEF` prints the card. Fill in only the second line, the model in one sentence in your own words (a 30-second recall), and send the card **together with the step's prompt, in one message**, to the other engine:
 
 ```
 HANDOVER from NotebookLM, Module 1: The control loop
 Model in one sentence: Controllers watch the desired state stored through the API server and act until the actual state matches it.
 Links I got wrong: ReplicaSet controller -> creates the Pods because the scheduler only assigns existing Pods to nodes
 Open question: How does a managed control plane such as EKS protect etcd?
-Next: INCIDENT: every deployment in the cluster suddenly fails, although all running Pods are healthy.
+
+ANALOGY: the Kubernetes control loop. Then stress-test the "K8s Company" analogy in my docs (Theory section II): where does it break?
 ```
 
 Switch engines only between steps, never in the middle of one.

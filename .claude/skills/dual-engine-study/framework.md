@@ -116,14 +116,15 @@ At the one-month review, the checked facts in `For Gemini & docs` are folded int
 
 ## 5. Handover, reconcile, conflicts
 
-**Handover card.** `DEBRIEF` prints it in a code block; the learner fills in only *Model in one sentence* (a 30-second recall) and pastes it as the first message in the other engine, only between steps:
+**Handover card.** NotebookLM's `DEBRIEF` prints it in a code block. The learner fills in only *Model in one sentence* (a 30-second recall) and sends the card **together with the next step's prompt, in one message**, so Gemini runs that step instead of choosing its own topic:
 ```
-HANDOVER from <NotebookLM | Gemini>, Module <n>: <name>
+HANDOVER from NotebookLM, SCOPE: Module <n>, <name and sections>
 Model in one sentence: <own words>
 Links I got wrong: <confident errors first>
-Open question: <one>
-Next: <MODE> <topic>
+Open question: <a question about this module, or none>
 ```
+
+**Scope.** Each module's first NotebookLM message starts with `SCOPE: Module <n>, <name and sections>`, and the handover card carries the same scope to Gemini. Both instruction blocks keep every question inside that scope. A mechanism from another topic is named in one line as a black box and listed under *Later* in `DEBRIEF`, never questioned. Mixed drills (`CHAOS`, `INCIDENT` without a topic) name the modules learned so far.
 
 **Two NotebookLM notes** carry knowledge between the engines:
 
@@ -144,6 +145,7 @@ Next: <MODE> <topic>
 | NotebookLM reduces hallucination but does not remove it, and misreads ASCII diagrams | Check the citation behind anything surprising; the learner looks at the docs' diagrams directly |
 | Gemini is confidently wrong about versions and limits | Label every claim; cite official docs with dates; `VERIFY` quotes the deciding sentence |
 | A model rechecking its own claim is not verification | The learner opens the link and finds the quoted sentence before a fact enters `For Gemini & docs` |
+| The engines drift into topics the learner has not studied yet, because a module's sources (a whole Theory file) cover more than the module | A `SCOPE:` line in the first message and a scope rule in both instruction blocks; other topics become one-line black boxes and a *Later* list; mixed drills list only the modules learned |
 | Unchecked material enters the closed world: *Search the web* imports, *Chats from Gemini*, notes converted to sources | Never use *Search the web* in the study notebook; untick *Chats from Gemini* in every source picker, Studio dialogs included; never **Convert to source** a study note |
 | AI-drawn visuals (Video, Infographic, Canvas) can contradict verified diagrams | The learner draws first, then compares with the docs' diagrams |
 | Analogies mislead beginners | Mapping table, 2 breaks with the misconception each causes, and the learner finds a third |
@@ -181,7 +183,7 @@ Tools are chosen for the learner, not because they exist. Every feature of both 
 | NotebookLM | Reports, Slide Deck | Skip | For reading or presenting, not retrieval |
 | NotebookLM | Video Overview, Infographic | Never | Passive; AI-drawn pictures can contradict verified diagrams |
 | NotebookLM | Search the web for new sources (Fast / Deep Research) | Never in the study notebook | Imports unchecked pages into the closed world |
-| Gemini | Gem (instructions only, no default tool, no Knowledge) + **+** → NotebookLM per chat | Core | One mentor persona, reusable across subjects |
+| Gemini | Gem (instructions, no default tool, the notebook as Knowledge; fallback **+** → NotebookLM per chat) | Core | One mentor persona, reusable across subjects; every chat in it has the notebook |
 | Gemini | Deep Research | Optional | At most twice per course, for broad `CONTEXT` topics |
 | Gemini | Photo upload (`REVIEW`) | Optional | Modules whose docs have no diagram |
 | Gemini | Canvas | Skip | An AI redraw competes with verified diagrams |
@@ -213,7 +215,8 @@ Tools are chosen for the learner, not because they exist. Every feature of both 
 - **Smooth explanations make learners overconfident** (Dunlosky & Rawson, 2012); **delayed judgements are accurate** (Nelson & Dunlosky, 1991): predicted vs actual quiz scores, next week's blank redraw.
 - **Sleep consolidates new memories** (Diekelmann & Born, 2010): the first review comes the day after.
 - **Effortful learning lasts; easy feels good but fades** (desirable difficulties: Bjork, 1994): "It should feel hard".
-- **Mixing topics teaches discrimination** (interleaving: Rohrer & Taylor, 2007): the mixed drill.
+- **Mixing topics teaches discrimination** (interleaving: Rohrer & Taylor, 2007): the mixed drill, limited to modules already learned.
+- **New knowledge must attach to what is already known; questions about topics not yet learned overload working memory** (cognitive load theory: Sweller, 1988): the `SCOPE` rule.
 
 ## 9. Adapting to a new subject
 
@@ -255,7 +258,7 @@ Verified 2026-11-07 and 2026-11-08 (UI details against the user's screenshots on
 
 **Gemini:**
 - **Notebooks as sources:** a notebook is attached in a chat with **+** → **NotebookLM** (documented by Google; Workspace accounts need NotebookLM enabled by the admin). Since April 2026, notebooks also live inside Gemini and sync both ways.
-- **Gems:** created on the web only, through the side panel → **Gems** (or **Explore Gems**) → **New Gem**, with Name, Instructions, a default tool (including Guided Learning, Canvas and Deep Research) and Knowledge files; usable on mobile afterwards. Attaching a notebook as Gem Knowledge is reported but not confirmed, so this method attaches it per chat. Not yet checked against the user's screen.
+- **Gems:** created on the web only, through the side panel → **Gems** (or **Explore Gems**) → **New Gem**, with Name, Instructions, a default tool (including Guided Learning, Canvas and Deep Research) and Knowledge files; usable on mobile afterwards. A NotebookLM notebook **can** be a Gem's Knowledge (confirmed on the user's Workspace account, 2026-11-13); every chat in the Gem then has it, so it is not attached per chat. **+** → NotebookLM per chat is the fallback when the option is missing.
 - **Guided Learning:** a Socratic tutor mode that builds a study plan; Gemini can also make quizzes, flashcards and study guides in chat.
 - **Gemini Live:** voice conversation, with camera and screen sharing on mobile. Whether it uses a Gem's instructions and an attached notebook is unconfirmed.
 - **Scheduled actions:** recurring prompts (daily, weekly or monthly), up to 10 at a time, at fixed intervals; on paid plans.
@@ -294,6 +297,8 @@ Sources:
 - **Prompts parked in an appendix or another file.** The learner has to jump away in the middle of a step. Put every prompt at the step that uses it.
 - **Allocating the learner's time unasked** (sessions, minutes, weekly plans). Say what to do and when to review; the learner plans their own time.
 - **Chat steps with no stated end, and clickable suggested questions.** A learner in `TRACE` did not know whether to keep answering or move on to `PREDICT`. Say how each chat step ends. NotebookLM's suggested-question chips under a reply turn retrieval into explanation, so tell the learner to ignore them.
+- **No scope.** The Theory file covers every topic, so in the control-loop module NotebookLM kept asking about networking (kube-proxy, iptables, conntrack) that the learner had not studied: *"lúc tôi học module 1 trên Notebooklm, nó cứ nhắc về network mà tôi ko hiểu gì hết… Biết là mở rộng tốt nhưng đừng để mở rộng sang phần khác"*. Every session now carries a `SCOPE` line, and both instruction blocks keep to it.
+- **A handover card sent on its own.** Gemini's rule 7 aims its first question at the card's open question, so it drifted to a topic from a later module (conntrack, during the control-loop module). Send the card and the step's prompt in one message, and keep the open question only if it belongs to the current module.
 - **Guessing where a button is.** UI steps come only from the user's screenshots or dated sources.
 - **Uploading the study guide itself as a source** makes the AI quiz about the method. Keep it out of the notebook.
 - **Asking the learner to recall IPs, ports or names from labs** is trivia. Scenarios may *show* them, but questions never ask for them.
