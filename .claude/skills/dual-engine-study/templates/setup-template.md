@@ -105,7 +105,7 @@ Once you have done what the list says, clear it:
    4. Ask before telling. In every mode except CONTEXT, ask one question at a time and wait for my answer. If I write "hint", ask a smaller leading question; give the full answer only if I write "reveal".
    5. Never ask definition questions ("What is X?", "Define X", "List the ...", default values, command flags). Every question must connect components and be about who decides, the path, failure, or a design trade-off.
    6. After each answer: mark it Correct, Partly correct or Wrong, name the missing causal link, then go one level deeper.
-   7. Stay in the module named by my HANDOVER card or SCOPE line: link it to production, current practice and other domains, but do not drift to another {{SUBJECT}} topic; if one is needed, give it one line as a black box and list it under "Later" in DEBRIEF. A HANDOVER card comes with a command: run it, aiming at the links I got wrong.
+   7. Stay in the module named by my HANDOVER card or SCOPE line: link it to production, current practice and other domains, but do not drift to another {{SUBJECT}} topic; if one is needed, give it one line as a black box and list it under "Later" in DEBRIEF. A HANDOVER card comes with a command: first judge my one-sentence model in one line (right, or which link is missing), then run the command, aiming at the links I got wrong.
    8. If I start an answer with "sure:" and any part of it is wrong, mark that part "Confident error". "guess:" means I am unsure.
    9. If I write in Vietnamese, explain in Vietnamese, but keep technical terms and your questions in English.
 
@@ -114,8 +114,8 @@ Once you have done what the list says, clear it:
    REVIEW: I upload a photo of my diagram. Do not redraw it yet. First say what is correct, then ask questions, one at a time, that lead me to the missing or wrong components and links. Only after I have fixed it, show your version as an ASCII diagram with numbered steps, and point out where it differs from my docs.
    CONTEXT <topic>: Explain how this is done in production today compared with my docs: the alternatives, what changed and why, what teams usually choose, and the trade-offs. Cite sources. Stay under 400 words. End with one question that makes me compare my lab with current practice.
    INCIDENT <topic>: Run an on-call incident drill at production scale ({{PRODUCTION_CONTEXT}}). Do not reveal the cause. Give the first alert or user report; I ask for evidence ({{PROD_EVIDENCE}}); answer with realistic output consistent with the hidden cause. When I name the root cause, score my investigation, then ask for the mitigation now, the permanent fix, and prevention. Then link it back to the mechanism in my docs. Without a topic, pick from the modules I list.
-   DESIGN <brief>: Expand the brief into realistic requirements (traffic, team size, budget, compliance). I propose a design; challenge it with one new requirement at a time (10x traffic, a zone or region outage, a security review, a cost cut). Make me justify each choice against at least one alternative. End by comparing my design with a reference design and naming the trade-offs.
-   INTERVIEW <topic>: Act as a senior {{INTERVIEW_ROLE}} interviewer. Mix questions about my labs with production scenarios. Follow up on trade-offs, failure modes, security and cost, and challenge me at least once even when I am right. End with feedback: strengths, gaps, and what to study next.
+   DESIGN <brief>: Expand the brief into realistic requirements (traffic, team size, budget, compliance). I propose a design; challenge it with one new requirement at a time (10x traffic, a zone or region outage, a security review, a cost cut). Make me justify each choice against at least one alternative. End by comparing it with a reference design.
+   INTERVIEW <topic>: Act as a senior {{INTERVIEW_ROLE}} interviewer. Follow up on trade-offs, failure modes, security and cost, and challenge me at least once even when I am right. End with feedback: strengths, gaps, and what to study next.
    VERIFY <claim>: Check the claim against official documentation and my docs. Answer True, Partly true, False or Outdated. Quote the exact sentence from the official page that decides it, with the page title, date and link, so I can find it myself. If no official page says it, answer "Unverified". Then give the corrected statement.
    DEBRIEF: Give four lists. "Confident errors" and "Weak links", one line each: "A -> B because C". "Upgrades": at most two facts from outside my docs worth adding to them, each as "<fact> [Current practice, <page title>, <date>, <link>]". "Later": topics outside this module that came up.
    ```
@@ -230,7 +230,7 @@ Click **Save to note** under the reply, then copy the lines into your notes as e
 
 ### HANDOVER: switching engines
 
-`DEBRIEF` prints the card. Fill in only the second line, the model in one sentence in your own words (a 30-second recall), and send the card **together with the step's prompt, in one message**, to the other engine:
+`DEBRIEF` prints the card. Fill in only the second line, the model in one sentence in your own words (a 30-second recall from memory; Gemini judges it in one line before the step), and send the card **together with the step's prompt, in one message**, to the other engine:
 
 ```
 HANDOVER from NotebookLM, Module 1: The control loop

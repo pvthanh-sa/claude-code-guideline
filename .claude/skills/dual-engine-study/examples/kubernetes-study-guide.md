@@ -68,7 +68,7 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    - A worker node is switched off while it runs one replica of a Deployment and one Pod of a DaemonSet.
    - A new node joins the cluster.
 6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-7. **Analogy** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+7. **Analogy** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    ANALOGY: the Kubernetes control loop. Then stress-test the "K8s Company" analogy in my docs (Theory section II): where does it break?
    ```
@@ -136,7 +136,7 @@ INTERVIEW: the declarative model and controllers versus imperative scripts; why 
    - A request enters a NodePort on a node that does not run the target Pod (`externalTrafficPolicy: Cluster`): what source IP does the Pod see, and why?
 6. **Diagnose** (NotebookLM chat): send `DIAGNOSE Service networking` and investigate from the first symptom.
 7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-8. **Current practice** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+8. **Current practice** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    CONTEXT: kube-proxy modes (iptables, IPVS, nftables) and eBPF-based replacements such as Cilium; and how the Amazon VPC CNI gives Pods VPC IP addresses, compared with Calico IPIP in my on-prem lab.
    ```
@@ -208,7 +208,7 @@ In both, the component that **configures** the path is not a hop **on** the path
    - The on-prem nginx-lb still lists a node that has been switched off.
    - On EKS, a backend Pod fails its readiness probe while it is an ALB target.
 6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-7. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+7. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    INCIDENT: users get 502 errors from the ALB for about 30 seconds during every deployment on EKS.
    ```
@@ -280,7 +280,7 @@ INTERVIEW: why on-prem uses NodePort while cloud uses LoadBalancer; why a Cluste
    - The NFS server reboots while MySQL is writing.
    - The MySQL StatefulSet is scaled from 1 to 3 replicas, expecting a replicated database.
 6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-7. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+7. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    INCIDENT: after a node failure on EKS, the replacement database Pod has been stuck in ContainerCreating for 10 minutes.
    ```
@@ -353,7 +353,7 @@ INTERVIEW: a database in a StatefulSet versus a managed database; EBS versus EFS
    - A Pod requests more memory than any node offers after the kubelet's reservations.
 6. **Diagnose** (NotebookLM chat): send `DIAGNOSE health and scaling` and investigate from the first symptom.
 7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-8. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+8. **Incident** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    INCIDENT: during a flash sale the HPA scales the backend out, but the error rate stays high for 5 minutes before the system recovers.
    ```
@@ -423,7 +423,7 @@ INTERVIEW: liveness versus readiness when a dependency fails; Cluster Autoscaler
    - Pods get AWS permissions from the node's instance role instead of IRSA.
    - An app's database password is stored only as a base64 Kubernetes Secret in Git.
 6. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-7. **Analogy** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+7. **Analogy** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    ANALOGY: IAM, access entries, Kubernetes RBAC and IRSA as one identity system.
    ```

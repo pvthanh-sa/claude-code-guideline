@@ -79,7 +79,7 @@ Not used on purpose: Video Overview, Infographic, Mind Map, Reports, Slide Deck,
    - {{failure 5}}
 6. {{Only where the docs describe the failure mechanisms:}} **Diagnose** (NotebookLM chat): send `DIAGNOSE {{module topic}}` and investigate from the first symptom.
 7. **Save** (NotebookLM): send `DEBRIEF`. Copy its mistakes into `Weak links` and its open questions into `For Gemini & docs`; keep the handover card it prints. Its *Later* list needs nothing now: those topics have their own modules.
-8. **{{Gemini step name}}** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card in your own words, then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
+8. **{{Gemini step name}}** (Gemini: a new chat in your Gem): write *Model in one sentence* on the handover card from memory, in your own words (rough is fine: Gemini judges it in one line), then send the card and this prompt **in one message**, so Gemini starts with this step and stays in this module:
    ```
    {{CONTEXT / INCIDENT / ANALOGY: the module's first core Gemini prompt}}
    ```

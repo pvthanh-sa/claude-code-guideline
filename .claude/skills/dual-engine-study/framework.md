@@ -116,7 +116,7 @@ At the one-month review, the checked facts in `For Gemini & docs` are folded int
 
 ## 5. Handover, reconcile, conflicts
 
-**Handover card.** NotebookLM's `DEBRIEF` prints it in a code block. The learner fills in only *Model in one sentence* (a 30-second recall) and sends the card **together with the next step's prompt, in one message**, so Gemini runs that step instead of choosing its own topic:
+**Handover card.** NotebookLM's `DEBRIEF` prints it in a code block. The learner fills in only *Model in one sentence* (a 30-second recall from memory, never copied; Gemini judges it in one line before running the step) and sends the card **together with the next step's prompt, in one message**, so Gemini runs that step instead of choosing its own topic:
 ```
 HANDOVER from NotebookLM, SCOPE: Module <n>, <name and sections>
 Model in one sentence: <own words>
