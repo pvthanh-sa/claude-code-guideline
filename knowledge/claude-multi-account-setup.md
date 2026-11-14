@@ -40,18 +40,18 @@ account. Rename freely (the bundle filenames and aliases must match).
    across 5 switch rounds: every session/memory/history file stayed byte-identical.
 5. **One account at a time — and ideally one tab at a time.** All sessions share one
    `~/.claude/.credentials.json`. Two risks:
-   - *Switching accounts* in terminal B changes the token under the session running in A.
-   - *Two tabs of the SAME account* running concurrently: OAuth refresh-tokens rotate, so
+   - _Switching accounts_ in terminal B changes the token under the session running in A.
+   - _Two tabs of the SAME account_ running concurrently: OAuth refresh-tokens rotate, so
      when one tab refreshes it invalidates the token the other tab still holds → the other
      eventually hits "Login expired". This is inherent to OAuth token rotation over a shared
      credentials file, NOT a script bug — no wrapper can fully prevent it. If you must run
      several tabs of one account, expect an occasional `/login`.
-   The switch function is a **no-op when the target account is already active**, so launching
-   a second tab with `claude-<acc>` does not itself clobber a freshly logged-in token.
-   It also **hard-blocks switching to a DIFFERENT account while any claude session is running**
-   (detected via alive PIDs in `~/.claude/sessions/*.json`): you get "cannot switch — close all
-   running claude tabs first" instead of silently breaking the running session. To switch
-   accounts, close every claude tab (terminal + VS Code) first.
+     The switch function is a **no-op when the target account is already active**, so launching
+     a second tab with `claude-<acc>` does not itself clobber a freshly logged-in token.
+     It also **hard-blocks switching to a DIFFERENT account while any claude session is running**
+     (detected via alive PIDs in `~/.claude/sessions/*.json`): you get "cannot switch — close all
+     running claude tabs first" instead of silently breaking the running session. To switch
+     accounts, close every claude tab (terminal + VS Code) first.
 6. **The OAuth callback may be blocked** by a VPN / Cloudflare WARP / Warp terminal / SSH →
    use the paste-code flow (Claude prints a URL; open it in the browser signed into the right
    account; paste the returned auth code back into the CLI).
@@ -69,6 +69,7 @@ account. Rename freely (the bundle filenames and aliases must match).
    model is each person running their own `/login`. This is a user decision.
 
 ## Requirements
+
 - `bash`, `jq` (`sudo apt install jq`).
 
 ## Setup (in order)
@@ -225,7 +226,21 @@ claude                           # run the most recently switched account
 claude-acc2 --resume "<name>"    # resume any session (even one acc1 created), directory-scoped
 claude-acc2 --resume             # open the picker
 ```
+
 Who am I: `jq -r '.oauthAccount.emailAddress' ~/.claude.json`
+
+### Adding a New Account
+
+For each new account, you only need to run one command:
+
+```bash
+__claude_add dat                 # /login with dat's email → /exit
+claude-dat                       # available immediately in the same terminal
+
+```
+
+**How it works:**
+Each account has a bundle stored as `~/.claude/.accounts/<name>.*`. When a terminal starts, the script dynamically creates a `claude-<name>` alias for each bundle. The `__claude_add` command also registers the alias immediately after saving the bundle, so you do not need to modify `~/.bash_aliases` or open a new terminal window to start using it.
 
 ## Verify after setup
 
@@ -249,8 +264,8 @@ the next `__claude_switch` auto-saves it into that account's bundle.
 Verified in a sandbox (fake HOME + fake tokens) for the full cycle:
 in-session `/login` → relaunch same account (no-op keeps the FRESH token, stale bundle does not
 clobber it) → switch away (fresh token is auto-saved to its bundle) → switch back (returns on the
-FRESH token, **no re-login**). Also verified: logging in as the *wrong* account mid-session stores
-its token in the *correct* bundle without contaminating the other one.
+FRESH token, **no re-login**). Also verified: logging in as the _wrong_ account mid-session stores
+its token in the _correct_ bundle without contaminating the other one.
 
 Optional, if you want the bundle updated immediately instead of at the next switch:
 
@@ -289,4 +304,5 @@ Only rule: authorize as the account that session is running (`claude-accX` → l
 rm -rf ~/.claude/.accounts          # (optional) delete the stored tokens
 # original identity is backed up at ~/.claude.json.bak-multiacct
 ```
+
 Data under `~/.claude` is not deleted.
